@@ -33,6 +33,8 @@ namespace V1Bridge.Uk
                 worldRoot = null;
                 stageRoot = null;
                 stageMeshes.Clear();
+                proxies.Clear();
+                goreZone = null;
                 Plugin.Log.LogInfo("scene: " + scene);
             }
             // the menus are skipped: V1 is needed in the Sandbox

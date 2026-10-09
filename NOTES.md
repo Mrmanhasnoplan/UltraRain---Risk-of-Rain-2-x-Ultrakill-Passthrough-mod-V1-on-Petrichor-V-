@@ -11,7 +11,7 @@ Working log for the V1-in-RoR2 bridge. Design: [docs/DESIGN.md](docs/DESIGN.md).
 | 2 V1 in character select | done 2026-10-09 (`survivor` scenario passes) |
 | 3 ULTRAKILL's picture + input | done 2026-10-09 (`picture` scenario passes) |
 | 4 Stage geometry as collision | done 2026-10-10 (`geometry` scenario passes) |
-| 5 Monsters and damage | next |
+| 5 Monsters and damage | damage both ways done 2026-10-10 (`combat` scenario; user confirmed in game). Parry not done |
 | 6–7 | not started |
 
 ## How to work on it
@@ -79,6 +79,18 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   tag Floor) with a depth-only, transparent-black renderer (Ultracraft's occluder), a slice per frame; `GEODONE` then
   releases the `TP` that puts V1 down. Unreadable meshes are read back from their GPU vertex/index buffers.
   V1 falling 30 m below the stage's bounds is put back at the start.
+- Monsters (`Monsters.cs` → `UkBridge/Enemies.cs`): every frame `ENTS` lists each living non-player-team body (feet,
+  width, height from its capsule, health in ULTRAKILL damage units). UkBridge keeps a stand-in per monster
+  (EnemyIdentifier with head/body boxes, registered with EnemyTracker and TargetTracker, depth-only occluder), after Ultracraft.
+- Damage out: a Harmony prefix on `EnemyIdentifier.DeliverDamage` sends `DMG id multiplier head explosion hitter point`
+  and spawns ULTRAKILL's own blood there (so blood healing works). RorBridge turns it into a real `DamageInfo` from V1's
+  body: `multiplier x body.damage x DamageCoefficient` (config, default 3, so a revolver shot is 300%), crit rolled by
+  the body, proc coefficient = multiplier clamped to 0.1..1, then `OnHitEnemy/OnHitAll`. Kills are RoR2's own
+  (gold, experience, on-kill items); `KILL id` gives ULTRAKILL its style points.
+- Damage in: `V1HealthLink` on the body prefab marks every hit NonLethal, measures the health RoR2 took after all its own
+  mitigation, puts it back, and sends `HURT <share of full health x 100>`; ULTRAKILL's `GetHurt` decides (its hurt and
+  dash invincibility apply). ULTRAKILL's HP (`HP hp dead`) is written onto the body every frame as the same share of
+  full health; `dead` makes the body `Suicide()`. `HealthComponent.Heal` on V1 is forwarded as `HEAL`.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
 
@@ -115,6 +127,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-10 00:2x | combat (golemplains) | PASS 31/31 on 2 of the last 4 runs; the other 2 failed one or two timing-dependent checks (see known issues) | revolver x1.25 = 45 damage at level 1 (unit 36), Lemurian dead in 2 shots, gold 15→27 and experience 0→20 from the kill; punch x1 = 43.2; a 30% hit cost 30 HP; healing 10% gave 10 HP; a Lemurian's own attack arrived as HURT 8–17 |
 | 2026-10-10 00:01 | geometry (golemplains) | PASS (30/30, 0 real files changed) | 142 colliders, 206,244 triangles; export 78 ms, build in ULTRAKILL 153 ms; ground height equal within 2 mm at 81/81 points; V1 walked 27 m over terrain, feet 1 mm above RoR2's ground |
 | 2026-10-09 23:56 | picture (golemplains) | PASS (32/32, 0 real files changed) | ULTRAKILL ready 13 s after pick; 1280x720, 59.5 fps shown; frame age 23 ms avg / 28 ms p95; input sent → frame uploaded 34 ms avg / 35 ms p95; merge 5.0 ms (worker thread), upload 0.3 ms; walk 13 m in 1.5 s, jump 9.7 units |
 | 2026-10-09 23:40 | survivor (golemplains) | PASS (39/39 checks, 0 of 128 watched real files changed) | V1 is survivor 0 of 22; pick-to-handshake 4.2 s; V1 body 110 HP / 12 damage at level 1 |
@@ -133,7 +146,12 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - Stage geometry is a snapshot taken when the run engages: moving platforms, doors and anything spawned later are not mirrored yet.
 - RoR2's character-only invisible walls (CollideWithCharacterHullOnly layer) are not mirrored: V1 can walk past map edges RoR2 survivors cannot.
 - Only golemplains has been tested; stages with unreadable collision meshes will exercise the GPU read-back path for the first time.
-- Monsters already hurt the RoR2 body during a V1 run, but ULTRAKILL's health does not follow until Phase 5.
+- Parry is not implemented: RoR2 attacks and projectiles cannot be parried yet; every hit arrives as plain damage.
+- The `combat` scenario is not deterministic: the scripted punch sometimes misses a Lemurian spawned 1.5 m away, and the
+  "own attack" check can be confused by regeneration or invincibility frames. The mechanics behind both passed in other runs.
+- RoR2's passive regeneration is forwarded like any heal, so V1 slowly regenerates in ULTRAKILL (hard damage still caps it).
+- A monster's stand-in is one box from its movement capsule (x1.15), not its real hurt boxes; big or oddly shaped bosses will be off.
+- Overheal (ULTRAKILL HP above 100) is not shown on the RoR2 body.
 - RoR2's health bar, skill icons and crosshair still show over ULTRAKILL's HUD (to be hidden in Phase 6/7).
 - RoR2's game-over report throws `ArgumentOutOfRangeException` in `GameEndReportPanelController.SetDisplayData` for V1 (seen when a run ended in defeat); to fix in Phase 6.
 - ULTRAKILL logs "loadout: The Object you want to instantiate is null" when building the all-gear loadout (weapons 3/3/3/3/3/4 per slot still arrive).

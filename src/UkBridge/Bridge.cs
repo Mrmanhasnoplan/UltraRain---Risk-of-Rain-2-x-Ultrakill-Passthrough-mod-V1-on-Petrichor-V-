@@ -9,12 +9,14 @@ namespace V1Bridge.Uk
 {
     public partial class Bridge : MonoBehaviour
     {
+        public static Bridge I;
         int parentPid;
         float nextPark, nextParentCheck;
         bool quitting;
 
         void Awake()
         {
+            I = this;
             int port = int.TryParse(Plugin.Arg(Proto.UkArgPort), out var p) ? p : Proto.DefaultPort;
             int.TryParse(Plugin.Arg(Proto.UkArgParent), out parentPid);
             try { Net.Start(port); }
@@ -79,6 +81,7 @@ namespace V1Bridge.Uk
                     Plugin.Log.LogInfo("Risk of Rain 2 disconnected");
                     // let go of everything, or V1 keeps running on the last keys held
                     ReleaseInput();
+                    ClearProxies();
                     idle = true;
                     break;
                 case Proto.Size:
@@ -101,12 +104,27 @@ namespace V1Bridge.Uk
                 case Proto.Probe:
                     Net.Send(Proto.Probed + " " + Probe(rest));
                     break;
+                case Proto.Ents:
+                    ApplyEntities(rest);
+                    break;
+                case Proto.Hurt:
+                    Hurt(rest);
+                    break;
+                case Proto.Heal:
+                    Heal(rest);
+                    break;
+                case Proto.Kill:
+                    Killed(rest);
+                    break;
+                case Proto.Respawn:
+                    RespawnV1();
+                    break;
                 case Proto.Input:
                     OnInput(rest);
                     break;
                 case Proto.Idle:
                     idle = rest.Trim() == "1";
-                    if (idle) ReleaseInput();
+                    if (idle) { ReleaseInput(); ClearProxies(); }
                     break;
                 case Proto.Hello:
                 {
@@ -134,7 +152,7 @@ namespace V1Bridge.Uk
 
         string StateLine()
         {
-            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " res=" + Screen.width + "x" + Screen.height
+            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " dmg=" + DamageReports + " res=" + Screen.width + "x" + Screen.height
                    + " t=" + Time.unscaledTime.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " blocked=" + SaveGuard.Blocked
                    + " saves=" + GameProgressSaver.BaseSavePath.Replace(' ', '?');
         }

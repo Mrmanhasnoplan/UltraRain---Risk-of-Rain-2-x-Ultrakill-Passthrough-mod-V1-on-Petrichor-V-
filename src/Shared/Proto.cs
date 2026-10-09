@@ -6,7 +6,7 @@ namespace V1Bridge
     {
         public const string Version = "0.1.0";
         /// <summary>Bumped whenever a message or the frame file changes shape; the handshake refuses a mismatch.</summary>
-        public const int Protocol = 3;
+        public const int Protocol = 4;
         /// <summary>Not Ultracraft's 27110, so both can be installed side by side.</summary>
         public const int DefaultPort = 27120;
 
@@ -32,6 +32,11 @@ namespace V1Bridge
         public const string Geo = "GEO";           // GEO <path>: the stage's colliders (StageGeometry's file), replacing any before -> GEODONE
         public const string GeoClear = "GEOCLR";   // the stage is gone
         public const string Probe = "PROBE";       // PROBE <x> <y> <z> -> PROBED <ground y below that point> <collider> | PROBED none
+        public const string Ents = "ENTS";         // ENTS id,x,y,z,w,h,hp;...: every monster alive (feet, width, height, ULTRAKILL damage units left)
+        public const string Hurt = "HURT";         // HURT <n>: V1 loses n of ULTRAKILL's 100, if ULTRAKILL agrees (dash invincibility...)
+        public const string Heal = "HEAL";         // HEAL <x>: V1 gains x of ULTRAKILL's 100
+        public const string Kill = "KILL";         // KILL <id>: that monster died to V1
+        public const string Respawn = "RESPAWN";   // V1 alive and whole again (a new run, a revive)
         public const string Idle = "IDLE";         // IDLE 0|1: Risk of Rain 2 is not in a V1 run; ULTRAKILL stops drawing frames
 
         // level (ULTRAKILL -> RoR2)
@@ -39,6 +44,7 @@ namespace V1Bridge
         public const string Ready = "READY";       // the Sandbox is stripped down to V1 and waiting for a TP
         public const string GeoDone = "GEODONE";   // GEODONE <colliders> <triangles> <ms> <ok|problem>
         public const string Probed = "PROBED";
+        public const string Damage = "DMG";        // DMG <id> <multiplier> <head 0|1> <explosion 0|1> <hitter> <x> <y> <z>: V1 hit that monster
         public const string Landed = "LANDED";     // V1 is switched on (movement, camera, weapons, HUD)
         public const string Pose = "P";            // P <feet xyz> <eye xyz> <yaw> <pitch> <roll> <fov> <vel xyz> <grounded> <sliding>
         public const string Hp = "HP";             // HP <hp> <dead 0|1>

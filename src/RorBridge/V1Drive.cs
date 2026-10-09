@@ -51,6 +51,12 @@ namespace V1Bridge.Ror
         static CharacterModel hiddenModel;
         static int inputSeq;
 
+        /// <summary>V1's RoR2 body while ULTRAKILL is driving it.</summary>
+        public static CharacterBody Body => engaged && UkLanded ? body : null;
+        /// <summary>This health component is V1's and ULTRAKILL's HP is its truth right now.</summary>
+        public static bool Linked(HealthComponent hc) => engaged && UkLanded && body != null && hc != null && hc == body.healthComponent;
+        static bool deathSent;
+
         public static Vector3 ToRor(Vector3 uk) => Origin + uk / K;
         public static Vector3 ToUk(Vector3 ror) => (ror - Origin) * K;
         static string S(float f) => f.ToString("0.####", CultureInfo.InvariantCulture);
@@ -133,6 +139,7 @@ namespace V1Bridge.Ror
             }
             if (!UkLanded) return;
             SendInput(user);
+            Monsters.Tick(b);
             Frames.Update();
             ShowOverlay(user);
         }
@@ -149,6 +156,11 @@ namespace V1Bridge.Ror
             int w = Mathf.RoundToInt(h * (Screen.width / (float)Screen.height) / 2f) * 2;
             UkLink.Send(Proto.Size + " " + w + " " + h + " " + Plugin.UkFps.Value);
             float yaw = b.inputBank != null ? Quaternion.LookRotation(b.inputBank.aimDirection).eulerAngles.y : 0f;
+            deathSent = false;
+            UkHp = 100;
+            UkDead = false;
+            UkLink.Send(Proto.Respawn);
+            Monsters.Hook();
             Stage = StageGeometry.Export(Origin, K, ++geoSerial % 2);
             StageLoaded = null;
             Plugin.Log.LogInfo("stage exported: " + Stage.objects + " colliders, " + Stage.triangles + " triangles (" + Stage.unreadable + " meshes read from the GPU, " + Stage.skipped
@@ -293,6 +305,21 @@ namespace V1Bridge.Ror
             // the body's transform sits at its capsule's middle
             t.position = feet + (t.position - body.footPosition);
             t.rotation = Quaternion.Euler(0f, Latest.yaw, 0f);
+            // ULTRAKILL's HP is V1's health: the body shows the same share of its own (overheal has no place to go)
+            var hc = body.healthComponent;
+            if (hc != null && hc.alive)
+            {
+                if (UkDead)
+                {
+                    if (!deathSent)
+                    {
+                        deathSent = true;
+                        Plugin.Log.LogInfo("V1 died in ULTRAKILL: the body dies in Risk of Rain 2");
+                        hc.Suicide();
+                    }
+                }
+                else hc.Networkhealth = Mathf.Max(1f, Mathf.Clamp01(UkHp / 100f) * hc.fullHealth);
+            }
             if (body.inputBank != null) body.inputBank.aimDirection = Quaternion.Euler(Latest.pitch, Latest.yaw, 0f) * Vector3.forward;
         }
 

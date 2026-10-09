@@ -49,6 +49,7 @@ namespace V1Bridge.Ror
             body.bodyColor = Blue;
             // no drop pod: V1 is put down where the run starts, and ULTRAKILL takes it from there
             body.preferredPodPrefab = null;
+            BodyPrefab.AddComponent<V1HealthLink>();
 
             var skills = BodyPrefab.GetComponent<SkillLocator>();
             Skill(skills.primary, "Primary", "V1BRIDGE_V1_PRIMARY", new Color(0.25f, 0.55f, 1f));

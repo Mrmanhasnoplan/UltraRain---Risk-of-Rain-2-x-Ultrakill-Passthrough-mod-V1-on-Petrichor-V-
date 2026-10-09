@@ -21,6 +21,7 @@ namespace V1Bridge.Ror
         internal static ConfigEntry<int> Port;
         internal static ConfigEntry<int> UkHeight;
         internal static ConfigEntry<int> UkFps;
+        internal static ConfigEntry<float> DamageCoefficient;
 
         internal static string Arg(string name)
         {
@@ -36,6 +37,7 @@ namespace V1Bridge.Ror
             UkProfileDir = Config.Bind("ULTRAKILL", "ProfileDir", "", "The BepInEx profile ULTRAKILL is started with. Empty: the 'uk' folder next to this profile.");
             Port = Config.Bind("Link", "Port", Proto.DefaultPort, "Loopback port UkBridge listens on.");
             UkHeight = Config.Bind("Performance", "UltrakillHeight", 720, "Height ULTRAKILL renders at (its width follows this window's shape). Lower is faster.");
+            DamageCoefficient = Config.Bind("Balance", "DamageCoefficient", 3f, "RoR2 damage of one ULTRAKILL damage unit (a revolver shot), as a multiple of V1's damage stat. 3 = 300%.");
             UkFps = Config.Bind("Performance", "UltrakillFpsCap", 120, "ULTRAKILL's frame rate cap.");
             var harmony = new Harmony("dev.v1bridge.ror");
             SaveGuard.Apply(harmony);
@@ -62,6 +64,7 @@ namespace V1Bridge.Ror
         {
             I = this;
             UkLink.OnMessage += V1Drive.OnMessage;
+            UkLink.OnMessage += Monsters.OnMessage;
             UkLink.Start(Plugin.Port.Value);
             string test = Plugin.Arg(TestMode.ArgName);
             if (test != null) gameObject.AddComponent<TestMode>().Begin(test, Plugin.Arg(TestMode.ArgOut));

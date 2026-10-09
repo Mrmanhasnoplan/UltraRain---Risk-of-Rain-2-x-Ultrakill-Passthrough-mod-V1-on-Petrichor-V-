@@ -65,6 +65,7 @@ namespace V1Bridge.Ror
                 case "survivor": body = Survivor(); break;
                 case "picture": body = Picture(); break;
                 case "geometry": body = Geometry(); break;
+                case "combat": body = Combat(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -580,6 +581,222 @@ namespace V1Bridge.Ror
             var body = LocalUserManager.GetFirstLocalUser().cachedBody;
             Check("RoR2's body is at V1's feet " + when, body != null && Vector3.Distance(body.footPosition, feet) < 0.3f, body != null ? F(Vector3.Distance(body.footPosition, feet)) + " m" : "no body");
             yield break;
+        }
+
+        // ------------------------------------------------------------ phase 5
+
+        readonly HashSet<CharacterMaster> testMasters = new HashSet<CharacterMaster>();
+
+        /// <summary>A monster on the ground <paramref name="metres"/> ahead of V1, standing still unless its AI is left on.</summary>
+        CharacterBody SpawnAhead(string masterName, float metres, bool ai)
+        {
+            var feet = V1Drive.ToRor(V1Drive.Latest.feet);
+            var ahead = feet + Quaternion.Euler(0f, V1Drive.Latest.yaw, 0f) * Vector3.forward * metres;
+            if (Physics.Raycast(ahead + Vector3.up * 30f, Vector3.down, out var hit, 100f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore)) ahead = hit.point;
+            var master = new MasterSummon
+            {
+                masterPrefab = MasterCatalog.FindMasterPrefab(masterName), position = ahead + Vector3.up * 0.5f, rotation = Quaternion.identity,
+                teamIndexOverride = TeamIndex.Monster, ignoreTeamMemberLimit = true
+            }.Perform();
+            if (master == null) return null;
+            testMasters.Add(master);
+            if (!ai) foreach (var a in master.GetComponents<RoR2.CharacterAI.BaseAI>()) a.enabled = false;
+            var spawned = master.GetBody();
+            // what the director gives a monster it spawns
+            var rewards = spawned != null ? spawned.GetComponent<DeathRewards>() : null;
+            if (rewards != null) { rewards.goldReward = 12; rewards.expReward = 20; }
+            return spawned;
+        }
+
+        /// <summary>Turn V1 to look straight at a point in the stage.</summary>
+        IEnumerator AimAt(Func<Vector3> target)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                Vector3 dir = V1Drive.ToUk(target()) - V1Drive.Latest.eye;
+                float yaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg, pitch = -Mathf.Asin(dir.normalized.y) * Mathf.Rad2Deg;
+                var f = V1Drive.Latest.feet;
+                UkLink.Send(Proto.Tp + " " + F(f.x) + " " + F(f.y) + " " + F(f.z) + " " + F(yaw) + " " + F(pitch));
+                yield return new WaitForSecondsRealtime(0.4f);
+            }
+        }
+
+        IEnumerator Tap(V1Drive.Frame input, float seconds = 0.12f)
+        {
+            V1Drive.Script = () => input;
+            yield return new WaitForSecondsRealtime(seconds);
+            V1Drive.Script = () => default;
+        }
+
+        IEnumerator UkState()
+        {
+            stateReply = null;
+            UkLink.Send(Proto.State);
+            float t = Now;
+            while (stateReply == null && Now - t < 5f) yield return null;
+        }
+
+        static string StateValue(string state, string key)
+        {
+            foreach (var kv in (state ?? "").Split(' ')) if (kv.StartsWith(key + "=")) return kv.Substring(key.Length + 1);
+            return null;
+        }
+
+        /// <summary>Phase 5: monsters are ULTRAKILL targets; V1's shots and punches hurt and kill them through Risk of
+        /// Rain 2 (gold, experience); RoR2's damage and healing reach V1's ULTRAKILL health, and a monster's own attack
+        /// hurts V1.</summary>
+        IEnumerator Combat()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var user = LocalUserManager.GetFirstLocalUser();
+            var v1 = user.cachedBody;
+            // who hurts V1 during the test, for the record
+            var attackers = new List<string>();
+            GlobalEventManager.onServerDamageDealt += report =>
+            {
+                if (report.victimBody != v1) return;
+                string who = (report.attackerBody != null ? report.attackerBody.name : report.damageInfo != null && report.damageInfo.inflictor != null ? report.damageInfo.inflictor.name : "nobody") + " " + F(report.damageDealt);
+                if (attackers.Count < 12) attackers.Add(who);
+            };
+            // a quiet stage: only the monsters the test brings
+            foreach (var d in FindObjectsOfType<CombatDirector>()) d.enabled = false;
+            CharacterBody.onBodyStartGlobal += b =>
+            {
+                // anything the stage still sends is removed as it arrives
+                RoR2Application.onNextUpdate += () =>
+                {
+                    if (b != null && b != v1 && b.teamComponent != null && b.teamComponent.teamIndex != TeamIndex.Player && !testMasters.Contains(b.master) && b.healthComponent != null) b.healthComponent.Suicide();
+                };
+            };
+            foreach (var b in new List<CharacterBody>(CharacterBody.readOnlyInstancesList))
+            {
+                if (b != null && b != v1 && b.teamComponent != null && b.teamComponent.teamIndex == TeamIndex.Monster && b.healthComponent != null) b.healthComponent.Suicide();
+            }
+            yield return new WaitForSecondsRealtime(1.5f);
+            float unit = Monsters.UnitDamage(v1);
+            metrics["unit_damage"] = F(unit);
+
+            // 1. a monster is a target in ULTRAKILL
+            var lem = SpawnAhead("LemurianMaster", 9f, false);
+            if (!Check("spawned a Lemurian", lem != null)) yield break;
+            yield return new WaitForSecondsRealtime(2f);
+            yield return UkState();
+            Check("ULTRAKILL has a stand-in for every monster", Monsters.Listed >= 1 && StateValue(stateReply, "proxies") == Monsters.Listed.ToString(),
+                Monsters.Listed + " monsters, ULTRAKILL has " + StateValue(stateReply, "proxies"));
+
+            // 2. shooting it
+            yield return AimAt(() => lem.corePosition);
+            yield return SnapRor("ror2-aiming");
+            float hp0 = lem.healthComponent.combinedHealth;
+            int hits0 = Monsters.HitsApplied;
+            float t = Now;
+            for (int attempt = 0; attempt < 3 && Monsters.HitsApplied == hits0; attempt++)
+            {
+                yield return AimAt(() => lem.corePosition);
+                yield return Tap(new V1Drive.Frame { buttons = 1 });
+                t = Now;
+                while (Monsters.HitsApplied == hits0 && Now - t < 1.5f) yield return null;
+            }
+            float took = hp0 - lem.healthComponent.combinedHealth;
+            metrics["first_shot"] = Monsters.LastHit;
+            metrics["shot_to_damage_seconds"] = F(Now - t);
+            Check("a revolver shot hurt the Lemurian in Risk of Rain 2", Monsters.HitsApplied > hits0 && took > unit * 0.5f, Monsters.LastHit + " (of " + F(hp0) + " health)");
+
+            // 3. killing it: Risk of Rain 2's kill, with its rewards
+            uint gold0 = v1.master.money;
+            ulong xp0 = TeamManager.instance.GetTeamExperience(TeamIndex.Player);
+            int kills0 = Monsters.KillsByV1, shots = 1;
+            while (lem != null && lem.healthComponent.alive && shots < 14)
+            {
+                yield return AimAt(() => lem != null ? lem.corePosition : Vector3.zero);
+                if (lem == null || !lem.healthComponent.alive) break;
+                yield return Tap(new V1Drive.Frame { buttons = 1 });
+                shots++;
+                yield return new WaitForSecondsRealtime(0.6f);
+            }
+            yield return new WaitForSecondsRealtime(1.5f);
+            metrics["shots_to_kill_lemurian"] = shots.ToString();
+            Check("V1 killed the Lemurian", (lem == null || !lem.healthComponent.alive) && Monsters.KillsByV1 > kills0, shots + " shots");
+            Check("the kill paid gold and experience", v1.master.money > gold0 && TeamManager.instance.GetTeamExperience(TeamIndex.Player) > xp0,
+                "gold " + gold0 + " -> " + v1.master.money + ", experience " + xp0 + " -> " + TeamManager.instance.GetTeamExperience(TeamIndex.Player));
+            yield return UkState();
+            Check("the dead monster's stand-in is gone", StateValue(stateReply, "proxies") == Monsters.Listed.ToString(), "ULTRAKILL has " + StateValue(stateReply, "proxies") + ", monsters " + Monsters.Listed);
+
+            // 4. punching one
+            var lem2 = SpawnAhead("LemurianMaster", 1.5f, false);
+            if (!Check("spawned a second Lemurian up close", lem2 != null)) yield break;
+            yield return new WaitForSecondsRealtime(2f);
+            yield return AimAt(() => lem2.corePosition);
+            hits0 = Monsters.HitsApplied;
+            metrics["punch_distance_m"] = F(Vector3.Distance(V1Drive.ToRor(V1Drive.Latest.eye), lem2.corePosition));
+            int punches = 0;
+            for (; punches < 4 && Monsters.HitsApplied == hits0; punches++)
+            {
+                yield return AimAt(() => lem2.corePosition);
+                yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.F } }, 0.2f);
+                t = Now;
+                while (Monsters.HitsApplied == hits0 && Now - t < 1.5f) yield return null;
+            }
+            metrics["punches_thrown"] = punches.ToString();
+            metrics["punch"] = Monsters.LastHit;
+            Check("a punch hurt it", Monsters.HitsApplied > hits0 && Monsters.LastHit.Contains("punch"), Monsters.LastHit);
+            yield return SnapRor("ror2-after-punch");
+            yield return SnapUk("uk");
+
+            // 5. Risk of Rain 2's damage is ULTRAKILL's to take
+            yield return new WaitForSecondsRealtime(1f);
+            // not while V1 is still invincible from an earlier hit: ULTRAKILL would, rightly, ignore this one
+            for (int i = 0; i < 10; i++)
+            {
+                yield return UkState();
+                if (StateValue(stateReply, "layer") != "15") break;
+                yield return new WaitForSecondsRealtime(0.4f);
+            }
+            metrics["uk_layer_before_hit"] = StateValue(stateReply, "layer") ?? "?";
+            int ukHp0 = V1Drive.UkHp, hurts0 = V1HealthLink.HurtsSent;
+            float dealt = v1.healthComponent.fullHealth * 0.3f;
+            v1.healthComponent.TakeDamage(new DamageInfo { attacker = lem2.gameObject, inflictor = lem2.gameObject, damage = dealt, position = v1.corePosition });
+            // the hit is worked out at once; what it cost is already on its way to ULTRAKILL
+            float sentShare = V1HealthLink.LastHurt;
+            metrics["hurt_sent"] = F(sentShare);
+            t = Now;
+            while (V1Drive.UkHp == ukHp0 && Now - t < 3f) yield return null;
+            yield return new WaitForSecondsRealtime(0.3f);
+            Check("a hit of 30% of the body's health cost V1 the share Risk of Rain 2 let through", V1HealthLink.HurtsSent > hurts0 && sentShare > 5f && Mathf.Abs(ukHp0 - V1Drive.UkHp - sentShare) <= 2f,
+                "RoR2 let " + F(sentShare) + " % of full health through (armor " + F(v1.armor) + "), ULTRAKILL HP " + ukHp0 + " -> " + V1Drive.UkHp);
+            float share = v1.healthComponent.health / v1.healthComponent.fullHealth * 100f;
+            Check("the body's health shows ULTRAKILL's HP", Mathf.Abs(share - Mathf.Min(100, V1Drive.UkHp)) < 2f, F(v1.healthComponent.health) + " of " + F(v1.healthComponent.fullHealth) + " = " + F(share) + " %, ULTRAKILL " + V1Drive.UkHp);
+
+            // 6. and its healing reaches V1
+            ukHp0 = V1Drive.UkHp;
+            v1.healthComponent.Heal(v1.healthComponent.fullHealth * 0.1f, default, true);
+            t = Now;
+            while (V1Drive.UkHp == ukHp0 && Now - t < 3f) yield return null;
+            Check("healing 10% of the body's health gave V1 about 10 HP", Mathf.Abs(V1Drive.UkHp - (ukHp0 + 10)) <= 2, "ULTRAKILL HP " + ukHp0 + " -> " + V1Drive.UkHp);
+
+            // 7. a monster's own attack
+            if (lem2 != null && lem2.healthComponent.alive) lem2.healthComponent.Suicide();
+            var lem3 = SpawnAhead("LemurianMaster", 5f, true);
+            Check("spawned a Lemurian with its AI on", lem3 != null);
+            hurts0 = V1HealthLink.HurtsSent;
+            ukHp0 = V1Drive.UkHp;
+            t = Now;
+            while (V1HealthLink.HurtsSent == hurts0 && Now - t < 40f)
+            {
+                // regeneration keeps raising it while V1 waits: what counts is the HP just before the hit
+                ukHp0 = V1Drive.UkHp;
+                yield return null;
+            }
+            metrics["seconds_until_attacked"] = F(Now - t);
+            yield return new WaitForSecondsRealtime(0.5f);
+            Check("the Lemurian's own attack hurt V1", V1HealthLink.HurtsSent > hurts0 && V1Drive.UkHp < ukHp0, "ULTRAKILL HP " + ukHp0 + " -> " + V1Drive.UkHp + ", " + F(V1HealthLink.LastHurt) + " sent");
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && user.cachedBody != null && user.cachedBody.healthComponent.alive);
+            metrics["hits_applied"] = Monsters.HitsApplied.ToString();
+            metrics["v1_was_hurt_by"] = string.Join(", ", attackers.ToArray());
+            metrics["heal_sent_total"] = F(HealsReachV1.Sent);
+            yield return BackToTitle();
         }
 
         static string Q(string s)
