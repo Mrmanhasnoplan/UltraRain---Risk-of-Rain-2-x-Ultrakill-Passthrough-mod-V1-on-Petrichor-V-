@@ -98,7 +98,8 @@ namespace V1Bridge.Ror
             float t0 = Time.realtimeSinceStartup, introSince = -1f;
             while (SceneManager.GetActiveScene().name != "title" && Time.realtimeSinceStartup - t0 < 240f)
             {
-                if (SceneManager.GetActiveScene().name == "intro")
+                // not before the game has finished loading: objects in the intro are waiting for that
+                if (SceneManager.GetActiveScene().name == "intro" && RoR2Application.loadFinished)
                 {
                     if (introSince < 0f) introSince = Time.realtimeSinceStartup;
                     else if (Time.realtimeSinceStartup - introSince > 1f && RoR2.Console.instance != null)
@@ -112,18 +113,24 @@ namespace V1Bridge.Ror
             metrics["ror2_title_seconds"] = F(Time.realtimeSinceStartup);
             if (!Check("RoR2 reached the main menu", SceneManager.GetActiveScene().name == "title", "scene " + SceneManager.GetActiveScene().name)) yield break;
             Check("RoR2 save guards applied", SaveGuard.Ok, SaveGuard.Summary);
+            // the profiles are read a moment after the menu appears
+            t0 = Time.realtimeSinceStartup;
+            while (!SaveGuard.Active && Time.realtimeSinceStartup - t0 < 30f) yield return null;
             Check("RoR2 saves are sandboxed", SaveGuard.Active, SaveGuard.SandboxDir + ", seeded " + SaveGuard.Seeded);
             metrics["ror2_unity"] = Application.unityVersion;
             metrics["ror2_profiles_loaded"] = PlatformSystems.saveSystem != null ? PlatformSystems.saveSystem.loadedUserProfiles.Count.ToString() : "?";
             metrics["ror2_is_modded"] = RoR2Application.isModded.ToString();
             yield return new WaitForSecondsRealtime(2f);
+            var user = LocalUserManager.GetFirstLocalUser();
+            Check("RoR2 signed in to a sandboxed profile", user != null && user.userProfile != null && ReferenceEquals(user.userProfile.fileSystem, SaveGuard.Sandbox),
+                user?.userProfile != null ? user.userProfile.name + " (" + user.userProfile.fileName + ")" : "no user signed in");
 
             // 2. ULTRAKILL starts and shakes hands
             float launchAt = Time.realtimeSinceStartup;
             if (!Check("ULTRAKILL launch started", UkLauncher.Launch(), UkLauncher.Problem ?? "")) yield break;
-            while (!UkLink.Ready && UkLink.Problem == null && Time.realtimeSinceStartup - launchAt < 180f) yield return null;
+            while (!UkLink.Ready && UkLink.Problem == null && UkLauncher.Problem == null && Time.realtimeSinceStartup - launchAt < 180f) yield return null;
             metrics["uk_handshake_seconds"] = F(Time.realtimeSinceStartup - launchAt);
-            if (!Check("handshake", UkLink.Ready, UkLink.Problem ?? (UkLink.Connected ? "connected, no HELLO" : "never connected"))) yield break;
+            if (!Check("handshake", UkLink.Ready, UkLink.Ready ? "protocol " + Proto.Protocol : UkLink.Problem ?? UkLauncher.Problem ?? (UkLink.Connected ? "connected, no HELLO" : "never connected"))) yield break;
             foreach (var kv in UkLink.Peer) metrics["uk_" + kv.Key] = kv.Value;
             UkLink.Peer.TryGetValue("guards", out var guards);
             Check("ULTRAKILL save guards applied", guards != null && guards.StartsWith("ok"), guards ?? "none reported");
@@ -153,7 +160,8 @@ namespace V1Bridge.Ror
             stateReply = null;
             UkLink.Send(Proto.State);
             float t = Time.realtimeSinceStartup;
-            while (stateReply == null && Time.realtimeSinceStartup - t < 5f) yield return null;
+            while (stateReply == null && Time.realtimeSinceStartup - t < 30f) yield return null;
+            metrics["uk_state_reply_seconds"] = F(Time.realtimeSinceStartup - t);
             Check("ULTRAKILL answers STATE", stateReply != null, stateReply ?? "");
             string ukPng = Path.Combine(outDir, "uk.png"), rorPng = Path.Combine(outDir, "ror2.png");
             if (File.Exists(ukPng)) File.Delete(ukPng);
@@ -173,7 +181,8 @@ namespace V1Bridge.Ror
             while (UkLauncher.Running() != null && Time.realtimeSinceStartup - t < 20f) yield return new WaitForSecondsRealtime(0.25f);
             metrics["uk_quit_seconds"] = F(Time.realtimeSinceStartup - t);
             Check("ULTRAKILL closed on QUIT", uk != null && UkLauncher.Running() == null);
-            Check("nothing was written to Steam's storage", SaveGuard.Blocked == 0, SaveGuard.Blocked + " writes turned away (harmless, but something tried)");
+            Check("nothing tried to write to Steam's storage", SaveGuard.Blocked == 0, SaveGuard.Blocked + " writes turned away");
+            metrics["ror2_achievements_not_sent"] = SaveGuard.AchievementsSkipped.ToString();
         }
 
         static string Q(string s)

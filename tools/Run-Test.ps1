@@ -29,11 +29,21 @@ function Get-Snapshot {
     $h = @{}
     foreach ($w in $watched) {
         if (-not (Test-Path $w)) { continue }
-        foreach ($f in Get-ChildItem $w -Recurse -File -Force) { $h[$f.FullName] = '{0}|{1}' -f $f.Length, $f.LastWriteTimeUtc.Ticks }
+        # steam_autocloud.vdf is the Steam client's own marker (account id only), rewritten whenever the app runs
+        foreach ($f in Get-ChildItem $w -Recurse -File -Force | Where-Object Name -ne 'steam_autocloud.vdf') { $h[$f.FullName] = '{0}|{1}' -f $f.Length, $f.LastWriteTimeUtc.Ticks }
     }
     $h
 }
 $before = Get-Snapshot
+# and a copy of the save folders, so a run that did touch something can be undone
+$backup = Join-Path $Root ("backups\saves\{0}" -f (Split-Path $out -Leaf))
+New-Item -ItemType Directory -Force $backup | Out-Null
+$i = 0
+foreach ($w in $watched) {
+    $i++
+    if ((Test-Path $w -PathType Container) -and $w -notmatch 'BepInEx$|Mods$') { Copy-Item $w (Join-Path $backup ("{0:00}-{1}" -f $i, (Split-Path $w -Leaf))) -Recurse -Force }
+}
+Set-Content (Join-Path $backup 'sources.txt') ($watched -join "`r`n")
 
 $preloader = Join-Path $rorProfile 'BepInEx\core\BepInEx.Preloader.dll'
 $launch = @('-applaunch', '632360', '--doorstop-enabled', 'true', '--doorstop-target-assembly', "`"$preloader`"",

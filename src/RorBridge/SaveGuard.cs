@@ -19,8 +19,10 @@ namespace V1Bridge.Ror
         public static FileSystem Sandbox;
         static readonly List<string> missing = new List<string>();
         static int applied;
-        /// <summary>Writes turned away from Steam's storage, and achievements not sent.</summary>
+        /// <summary>Writes turned away from Steam's storage.</summary>
         public static int Blocked;
+        /// <summary>Steam achievements not sent (the game re-sends the profile's own on every start).</summary>
+        public static int AchievementsSkipped;
         public static int Seeded;
 
         public static bool Ok => missing.Count == 0;
@@ -38,7 +40,7 @@ namespace V1Bridge.Ror
             Patch(h, typeof(RoR2.Console), "WriteConfigFile", nameof(ConfigToSandbox));
             Patch(h, typeof(SteamworksRemoteStorageFileSystem), "OpenFileImpl", nameof(ReadOnlyOpen));
             foreach (var m in new[] { "DeleteFileImpl", "MoveFileImpl", "CopyFileImpl", "ReplaceFileImpl" }) Patch(h, typeof(SteamworksRemoteStorageFileSystem), m, nameof(Skip));
-            Patch(h, typeof(AchievementSystemSteam), "AddAchievement", nameof(Skip));
+            Patch(h, typeof(AchievementSystemSteam), "AddAchievement", nameof(NoAchievement));
         }
 
         static void Patch(Harmony h, Type t, string method, string prefix)
@@ -102,6 +104,12 @@ namespace V1Bridge.Ror
             Blocked++;
             Plugin.Log.LogWarning("blocked a write to Steam's storage: " + path);
             throw new IOException("V1Bridge: Steam cloud storage is read-only in this profile (" + path + ")");
+        }
+
+        static bool NoAchievement()
+        {
+            AchievementsSkipped++;
+            return false;
         }
 
         static bool Skip(MethodBase __originalMethod)

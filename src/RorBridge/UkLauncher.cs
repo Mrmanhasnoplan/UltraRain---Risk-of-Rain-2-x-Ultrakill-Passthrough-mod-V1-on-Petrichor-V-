@@ -43,17 +43,17 @@ namespace V1Bridge.Ror
             string preloader = Path.Combine(UkProfile, "BepInEx", "core", "BepInEx.Preloader.dll");
             if (!File.Exists(preloader)) return Fail("no BepInEx profile for ULTRAKILL at " + UkProfile + " (run tools\\Setup-Profiles.ps1)");
             if (!File.Exists(Path.Combine(UkProfile, "BepInEx", "plugins", "UkBridge", "UkBridge.dll"))) return Fail("UkBridge.dll is not in " + UkProfile);
+            // Doorstop 3 does not load on ULTRAKILL's Unity 2022: the game would start unmodded, on the real save
             int doorstop = DoorstopVersion(game);
-            if (doorstop == 0) return Fail("ULTRAKILL's folder has no Doorstop (winhttp.dll + doorstop_config.ini)");
-            string switches = doorstop >= 4
-                ? "--doorstop-enabled true --doorstop-target-assembly \"" + preloader + "\""
-                : "--doorstop-enable true --doorstop-target \"" + preloader + "\"";
+            if (doorstop < 4) return Fail("ULTRAKILL needs Doorstop 4 next to ULTRAKILL.exe (found " + (doorstop == 0 ? "none" : "version " + doorstop) + "): run tools\\Install-UkDoorstop.ps1");
+            string switches = "--doorstop-enabled true --doorstop-target-assembly \"" + preloader + "\"";
             string args = "-applaunch " + AppId + " " + switches + " " + Proto.UkArgActive + " " + Proto.UkArgPort + " " + Plugin.Port.Value
                           + " " + Proto.UkArgParent + " " + Process.GetCurrentProcess().Id + " -screen-fullscreen 0 -screen-width 1280 -screen-height 720";
             try
             {
                 Process.Start(new ProcessStartInfo(steam, args) { UseShellExecute = false });
                 Started = true;
+                seenAt = -1f;
                 Plugin.Log.LogInfo("starting ULTRAKILL (Doorstop " + doorstop + "): " + steam + " " + args);
                 return true;
             }
@@ -86,13 +86,31 @@ namespace V1Bridge.Ror
             catch { }
         }
 
-        /// <summary>3 or 4 from the config Doorstop left next to ULTRAKILL.exe (the two take different switches), 0: none.</summary>
+        static float seenAt = -1f;
+        const float PluginGrace = 25f;
+
+        /// <summary>Every frame: an ULTRAKILL we started that hasn't connected soon after its process appeared is running
+        /// without UkBridge (so without the save sandbox). It is closed at once.</summary>
+        public static void Tick()
+        {
+            if (!Started || UkLink.Connected || Problem != null) return;
+            var p = Running();
+            if (p == null) return;
+            float now = UnityEngine.Time.realtimeSinceStartup;
+            if (seenAt < 0f) { seenAt = now; return; }
+            if (now - seenAt < PluginGrace) return;
+            try { p.Kill(); } catch { }
+            Started = false;
+            Fail("ULTRAKILL started without UkBridge (no connection " + PluginGrace + " s after it appeared): closed it");
+        }
+
+        /// <summary>Major version of the Doorstop proxy next to ULTRAKILL.exe, 0: none.</summary>
         static int DoorstopVersion(string game)
         {
-            string ini = Path.Combine(game, "doorstop_config.ini");
-            if (!File.Exists(Path.Combine(game, "winhttp.dll")) || !File.Exists(ini)) return 0;
-            string text = File.ReadAllText(ini);
-            return text.Contains("[UnityDoorstop]") ? 3 : 4;
+            string dll = Path.Combine(game, "winhttp.dll");
+            if (!File.Exists(dll) || !File.Exists(Path.Combine(game, "doorstop_config.ini"))) return 0;
+            try { return FileVersionInfo.GetVersionInfo(dll).FileMajorPart; }
+            catch { return 0; }
         }
 
         static string SteamValue(string name)

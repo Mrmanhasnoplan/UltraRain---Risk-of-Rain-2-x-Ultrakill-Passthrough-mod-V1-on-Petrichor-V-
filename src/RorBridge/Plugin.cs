@@ -31,6 +31,8 @@ namespace V1Bridge.Ror
             UkProfileDir = Config.Bind("ULTRAKILL", "ProfileDir", "", "The BepInEx profile ULTRAKILL is started with. Empty: the 'uk' folder next to this profile.");
             Port = Config.Bind("Link", "Port", Proto.DefaultPort, "Loopback port UkBridge listens on.");
             SaveGuard.Apply(new Harmony("dev.v1bridge.ror"));
+            // what the game asks of mods: keeps modded players out of vanilla matchmaking
+            RoR2.RoR2Application.isModded = true;
 
             var go = new GameObject("RorBridge");
             DontDestroyOnLoad(go);
@@ -56,6 +58,7 @@ namespace V1Bridge.Ror
         void Update()
         {
             UkLink.Pump();
+            UkLauncher.Tick();
         }
 
         void OnApplicationQuit()
