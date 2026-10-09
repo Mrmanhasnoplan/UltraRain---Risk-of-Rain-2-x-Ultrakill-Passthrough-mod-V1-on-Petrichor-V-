@@ -1,0 +1,8 @@
+bin/
+obj/
+profiles/
+downloads/
+ref/
+test-output/
+*.user
+.vs/
