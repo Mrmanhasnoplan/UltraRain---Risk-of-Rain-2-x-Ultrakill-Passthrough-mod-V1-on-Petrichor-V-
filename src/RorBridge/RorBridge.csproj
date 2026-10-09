@@ -14,6 +14,14 @@
     <Reference Include="BepInEx"><HintPath>$(BepInExCore)\BepInEx.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="0Harmony"><HintPath>$(BepInExCore)\0Harmony.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="RoR2"><HintPath>$(Managed)\RoR2.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="R2API.Core"><HintPath>$(ProfilesRoot)\ror2\BepInEx\plugins\RiskofThunder-R2API_Core\R2API.Core\R2API.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="R2API.ContentManagement"><HintPath>$(ProfilesRoot)\ror2\BepInEx\plugins\RiskofThunder-R2API_ContentManagement\R2API.ContentManagement\R2API.ContentManagement.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="R2API.Prefab"><HintPath>$(ProfilesRoot)\ror2\BepInEx\plugins\RiskofThunder-R2API_Prefab\R2API.Prefab\R2API.Prefab.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="R2API.Language"><HintPath>$(ProfilesRoot)\ror2\BepInEx\plugins\RiskofThunder-R2API_Language\R2API.Language\R2API.Language.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Unity.Addressables"><HintPath>$(Managed)\Unity.Addressables.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Unity.ResourceManager"><HintPath>$(Managed)\Unity.ResourceManager.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.PhysicsModule"><HintPath>$(Managed)\UnityEngine.PhysicsModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="LegacyResourcesAPI"><HintPath>$(Managed)\LegacyResourcesAPI.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Zio"><HintPath>$(Managed)\Zio.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="HGCSharpUtils"><HintPath>$(Managed)\HGCSharpUtils.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine"><HintPath>$(Managed)\UnityEngine.dll</HintPath><Private>false</Private></Reference>

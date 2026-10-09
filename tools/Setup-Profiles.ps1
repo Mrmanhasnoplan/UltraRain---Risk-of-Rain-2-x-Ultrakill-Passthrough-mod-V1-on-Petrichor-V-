@@ -39,13 +39,17 @@ if ($Force -or -not (Test-Path (Join-Path $ror 'BepInEx\core\BepInEx.dll'))) {
         $zip = Join-Path $dl "$($j.latest.full_name).zip"
         if (-not (Test-Path $zip)) { Invoke-WebRequest $j.latest.download_url -OutFile $zip }
         $versions += $j.latest.full_name
+        # laid out the way r2modman does it: each package in its own Author-Name folder. BepInExPack's preloader
+        # deletes a plugins\RoR2BepInExPack folder on sight (the pack's old location), so the plain layout loses it.
+        $pkg = $p -replace '/', '-'
         Expand-Entries $zip $ror {
             param($n)
             if ($n -match '^BepInExPack/(BepInEx/.+)$') { return $Matches[1] }
             if ($n -match '^BepInEx/.+$') { return $n }
-            if ($n -match '^(plugins|patchers|monomod|config)/.+$') { return "BepInEx/$n" }
+            if ($n -match '^config/.+$') { return "BepInEx/$n" }
+            if ($n -match '^(plugins|patchers|monomod)/(.+)$') { return "BepInEx/$($Matches[1])/$pkg/$($Matches[2])" }
             return $null
-        }
+        }.GetNewClosure()
     }
     $versions | Set-Content (Join-Path $ror 'packages.txt')
     "RoR2 profile: $ror"

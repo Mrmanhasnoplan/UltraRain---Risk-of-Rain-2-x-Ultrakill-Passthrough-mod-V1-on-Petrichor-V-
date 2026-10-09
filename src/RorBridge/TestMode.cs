@@ -13,11 +13,12 @@ namespace V1Bridge.Ror
 {
     /// <summary>Unattended runs: <c>--v1bridge-test &lt;scenario&gt; --v1bridge-out &lt;folder&gt;</c> skips the menus, runs the
     /// scenario's checks, saves screenshots from both games and results.json to the folder, and quits both games.
-    /// Scenarios: handshake.</summary>
+    /// Scenarios: handshake, survivor. <c>--v1bridge-stage &lt;scene&gt;</c> picks the stage runs start on.</summary>
     public class TestMode : MonoBehaviour
     {
         public const string ArgName = "--v1bridge-test";
         public const string ArgOut = "--v1bridge-out";
+        public const string ArgStage = "--v1bridge-stage";
 
         string scenario, outDir;
         readonly List<string> checks = new List<string>();
@@ -33,7 +34,7 @@ namespace V1Bridge.Ror
             Directory.CreateDirectory(outDir);
             UkLink.OnMessage += OnMessage;
             Plugin.Log.LogInfo("test mode: scenario '" + scenario + "', output " + outDir);
-            StartCoroutine(Run());
+            StartCoroutine(RunScenario());
         }
 
         void OnMessage(string cmd, string rest)
@@ -52,36 +53,41 @@ namespace V1Bridge.Ror
             return pass;
         }
 
-        IEnumerator Run()
+        IEnumerator RunScenario()
         {
             float started = Time.realtimeSinceStartup;
             IEnumerator body;
             switch (scenario)
             {
                 case "handshake": body = Handshake(); break;
+                case "survivor": body = Survivor(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
                     break;
             }
             // a scenario that hangs is a failure, not a game left running
-            const float limit = 420f;
-            while (body != null)
+            const float limit = 480f;
+            var stack = new Stack<IEnumerator>();
+            if (body != null) stack.Push(body);
+            while (stack.Count > 0)
             {
                 bool more;
-                try { more = body.MoveNext(); }
+                try { more = stack.Peek().MoveNext(); }
                 catch (Exception e)
                 {
                     Check("no exception", false, e.ToString());
                     break;
                 }
-                if (!more) break;
+                if (!more) { stack.Pop(); continue; }
                 if (Time.realtimeSinceStartup - started > limit)
                 {
                     Check("finished within " + limit + " s", false);
                     break;
                 }
-                yield return body.Current;
+                // a step that yields another sequence runs it to the end first
+                if (stack.Peek().Current is IEnumerator inner) { stack.Push(inner); continue; }
+                yield return stack.Peek().Current;
             }
             metrics["seconds"] = F(Time.realtimeSinceStartup - started);
             Write();
@@ -90,11 +96,9 @@ namespace V1Bridge.Ror
             Application.Quit();
         }
 
-        /// <summary>Phase 1: both plugins load, the saves are sandboxed, ULTRAKILL starts, the two shake hands, the link
-        /// is quick, both can save a screenshot, and ULTRAKILL goes when told.</summary>
-        IEnumerator Handshake()
+        /// <summary>Risk of Rain 2 reaches its main menu, signed in on the sandboxed saves.</summary>
+        IEnumerator ToTitle()
         {
-            // 1. Risk of Rain 2 reaches its main menu on the sandboxed saves
             float t0 = Time.realtimeSinceStartup, introSince = -1f;
             while (SceneManager.GetActiveScene().name != "title" && Time.realtimeSinceStartup - t0 < 240f)
             {
@@ -124,6 +128,14 @@ namespace V1Bridge.Ror
             var user = LocalUserManager.GetFirstLocalUser();
             Check("RoR2 signed in to a sandboxed profile", user != null && user.userProfile != null && ReferenceEquals(user.userProfile.fileSystem, SaveGuard.Sandbox),
                 user?.userProfile != null ? user.userProfile.name + " (" + user.userProfile.fileName + ")" : "no user signed in");
+        }
+
+        /// <summary>Phase 1: both plugins load, the saves are sandboxed, ULTRAKILL starts, the two shake hands, the link
+        /// is quick, both can save a screenshot, and ULTRAKILL goes when told.</summary>
+        IEnumerator Handshake()
+        {
+            yield return ToTitle();
+            if (failed) yield break;
 
             // 2. ULTRAKILL starts and shakes hands
             float launchAt = Time.realtimeSinceStartup;
@@ -183,6 +195,161 @@ namespace V1Bridge.Ror
             Check("ULTRAKILL closed on QUIT", uk != null && UkLauncher.Running() == null);
             Check("nothing tried to write to Steam's storage", SaveGuard.Blocked == 0, SaveGuard.Blocked + " writes turned away");
             metrics["ror2_achievements_not_sent"] = SaveGuard.AchievementsSkipped.ToString();
+        }
+
+        // ------------------------------------------------------------ shared steps
+
+        float Now => Time.realtimeSinceStartup;
+
+        /// <summary>RoR2's picture to <paramref name="name"/>.png in the output folder.</summary>
+        IEnumerator SnapRor(string name)
+        {
+            string png = Path.Combine(outDir, name + ".png");
+            if (File.Exists(png)) File.Delete(png);
+            ScreenCapture.CaptureScreenshot(png);
+            float t = Now;
+            while (!File.Exists(png) && Now - t < 10f) yield return null;
+            Check("RoR2 screenshot " + name, File.Exists(png));
+        }
+
+        IEnumerator SnapUk(string name)
+        {
+            string png = Path.Combine(outDir, name + ".png");
+            if (File.Exists(png)) File.Delete(png);
+            snapReply = null;
+            UkLink.Send(Proto.Snap + " " + png);
+            float t = Now;
+            while (snapReply == null && Now - t < 15f) yield return null;
+            Check("ULTRAKILL screenshot " + name, snapReply != null && snapReply.StartsWith(Proto.Snapped) && File.Exists(png), snapReply ?? "no reply");
+        }
+
+        /// <summary>From the main menu into character select, hosting alone.</summary>
+        IEnumerator ToLobby()
+        {
+            RoR2.Console.instance.SubmitCmd(null, "transition_command \"gamemode ClassicRun; host 0;\"");
+            float t = Now;
+            while ((PreGameController.instance == null || LocalUserManager.GetFirstLocalUser()?.currentNetworkUser == null) && Now - t < 90f) yield return null;
+            Check("entered character select", PreGameController.instance != null && LocalUserManager.GetFirstLocalUser()?.currentNetworkUser != null,
+                "scene " + SceneManager.GetActiveScene().name);
+            yield return new WaitForSecondsRealtime(2f);
+        }
+
+        IEnumerator Pick(SurvivorDef def)
+        {
+            var net = LocalUserManager.GetFirstLocalUser().currentNetworkUser;
+            net.SetSurvivorPreferenceClient(def);
+            var want = SurvivorCatalog.GetBodyIndexFromSurvivorIndex(def.survivorIndex);
+            float t = Now;
+            while (net.bodyIndexPreference != want && Now - t < 10f) yield return null;
+            Check("picked " + def.cachedName, net.bodyIndexPreference == want);
+            yield return new WaitForSecondsRealtime(2f);
+        }
+
+        /// <summary>Out of character select into a run, on --v1bridge-stage if given, until the local body exists.</summary>
+        IEnumerator StartRun()
+        {
+            string stage = Plugin.Arg(ArgStage);
+            if (!string.IsNullOrEmpty(stage))
+            {
+                var cv = typeof(Run).GetField("cvRunSceneOverride", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)?.GetValue(null) as RoR2.ConVar.BaseConVar;
+                if (Check("stage override available", cv != null && SceneCatalog.GetSceneDefFromSceneName(stage) != null, stage)) cv.SetString(stage);
+            }
+            var user = LocalUserManager.GetFirstLocalUser();
+            RoR2.Console.instance.SubmitCmd(user.currentNetworkUser, "pregame_start_run");
+            float t = Now;
+            while ((Run.instance == null || user.cachedBody == null) && Now - t < 120f) yield return null;
+            metrics["run_start_seconds"] = F(Now - t);
+            Check("run started with a body", Run.instance != null && user.cachedBody != null, "scene " + SceneManager.GetActiveScene().name);
+            if (!string.IsNullOrEmpty(stage)) Check("on the chosen stage", SceneManager.GetActiveScene().name == stage, SceneManager.GetActiveScene().name);
+            // out of the drop pod's fade-in
+            yield return new WaitForSecondsRealtime(4f);
+        }
+
+        IEnumerator BackToTitle()
+        {
+            RoR2.Console.instance.SubmitCmd(null, "disconnect");
+            float t = Now;
+            while ((SceneManager.GetActiveScene().name != "title" || Run.instance != null) && Now - t < 60f) yield return null;
+            Check("back at the main menu", SceneManager.GetActiveScene().name == "title" && Run.instance == null, SceneManager.GetActiveScene().name);
+            yield return new WaitForSecondsRealtime(2f);
+        }
+
+        // ------------------------------------------------------------ phase 2
+
+        /// <summary>Phase 2: V1 is a survivor like any other in character select; a run as someone else leaves the
+        /// bridge (and ULTRAKILL) off; picking V1 starts ULTRAKILL and a run as V1 switches the bridge on.</summary>
+        IEnumerator Survivor()
+        {
+            yield return ToTitle();
+            if (failed) yield break;
+
+            // 1. the catalog entry
+            var def = V1Survivor.Def;
+            if (!Check("V1 survivor registered", def != null && V1Survivor.Problem == null, V1Survivor.Problem ?? "")) yield break;
+            if (!Check("V1 is in the survivor catalog", def.survivorIndex != SurvivorIndex.None && SurvivorCatalog.GetSurvivorDef(def.survivorIndex) == def,
+                "index " + (int)def.survivorIndex + " of " + SurvivorCatalog.survivorCount)) yield break;
+            var body = def.bodyPrefab.GetComponent<CharacterBody>();
+            Check("V1 body is in the body catalog", body.bodyIndex != BodyIndex.None && BodyCatalog.GetBodyName(body.bodyIndex) == V1Survivor.BodyName, BodyCatalog.GetBodyName(body.bodyIndex));
+            string name = Language.GetString(def.displayNameToken), desc = Language.GetString(def.descriptionToken);
+            Check("name", name == "V1", name);
+            Check("description", desc != def.descriptionToken && desc.Length > 80, desc.Length + " characters");
+            Check("icon", body.portraitIcon != null);
+            Check("character select model", def.displayPrefab != null && def.displayPrefab.GetComponentsInChildren<Renderer>(true).Length > 0);
+            var loc = def.bodyPrefab.GetComponent<SkillLocator>();
+            var names = new List<string>();
+            bool skillsOk = true;
+            foreach (var slot in new[] { loc.primary, loc.secondary, loc.utility, loc.special })
+            {
+                var sd = slot != null && slot.skillFamily != null && slot.skillFamily.variants.Length == 1 ? slot.skillFamily.variants[0].skillDef : null;
+                string n = sd != null ? Language.GetString(sd.skillNameToken) : "?";
+                names.Add(n);
+                skillsOk &= sd != null && sd.icon != null && n != sd.skillNameToken && Language.GetString(sd.skillDescriptionToken) != sd.skillDescriptionToken;
+            }
+            Check("four skill entries with names, descriptions and icons", skillsOk, string.Join(", ", names.ToArray()));
+            Check("the bridge is off in the menu", !Session.Active && !Session.Wanted && !UkLauncher.Started && UkLauncher.Running() == null);
+
+            // 2. another survivor: plain Risk of Rain 2
+            var commando = SurvivorCatalog.FindSurvivorDef("Commando");
+            if (!Check("Commando found", commando != null)) yield break;
+            yield return ToLobby();
+            if (failed) yield break;
+            yield return Pick(commando);
+            yield return StartRun();
+            if (failed) yield break;
+            var user = LocalUserManager.GetFirstLocalUser();
+            Check("as Commando: the body is Commando's", BodyCatalog.GetBodyName(user.cachedBody.bodyIndex) == "CommandoBody", BodyCatalog.GetBodyName(user.cachedBody.bodyIndex));
+            Check("as Commando: bridge off, ULTRAKILL not started", !Session.Active && !Session.Wanted && !UkLauncher.Started && UkLauncher.Running() == null && !UkLink.Connected);
+            yield return SnapRor("ror2-run-commando");
+            yield return BackToTitle();
+            if (failed) yield break;
+
+            // 3. V1: ULTRAKILL starts from character select, the run is bridged
+            yield return ToLobby();
+            if (failed) yield break;
+            float pickedAt = Now;
+            yield return Pick(def);
+            yield return new WaitForSecondsRealtime(1f);
+            yield return SnapRor("ror2-lobby-v1");
+            while (!UkLink.Ready && UkLink.Problem == null && UkLauncher.Problem == null && Now - pickedAt < 120f) yield return null;
+            metrics["pick_to_handshake_seconds"] = F(Now - pickedAt);
+            if (!Check("picking V1 started ULTRAKILL and it shook hands", UkLink.Ready, UkLink.Ready ? "" : UkLink.Problem ?? UkLauncher.Problem ?? "timed out")) yield break;
+            UkLink.Peer.TryGetValue("guards", out var guards);
+            Check("ULTRAKILL save guards applied", guards != null && guards.StartsWith("ok"), guards ?? "none reported");
+            yield return StartRun();
+            if (failed) yield break;
+            Check("as V1: the body is V1's", user.cachedBody != null && BodyCatalog.GetBodyName(user.cachedBody.bodyIndex) == V1Survivor.BodyName,
+                user.cachedBody != null ? BodyCatalog.GetBodyName(user.cachedBody.bodyIndex) : "no body");
+            Check("as V1: bridge on", Session.Active && Session.Wanted && UkLink.Ready);
+            metrics["v1_max_health"] = user.cachedBody != null ? F(user.cachedBody.maxHealth) : "?";
+            metrics["v1_damage"] = user.cachedBody != null ? F(user.cachedBody.damage) : "?";
+            yield return SnapRor("ror2-run-v1");
+            yield return SnapUk("uk");
+
+            // 4. leaving the run switches it off; ULTRAKILL stays up until Risk of Rain 2 closes
+            yield return BackToTitle();
+            Check("after the run: bridge off", !Session.Active && !Session.Wanted);
+            Check("after the run: ULTRAKILL still up for the next one", UkLauncher.Running() != null && UkLink.Connected);
+            Check("nothing tried to write to Steam's storage", SaveGuard.Blocked == 0, SaveGuard.Blocked + " writes turned away");
         }
 
         static string Q(string s)

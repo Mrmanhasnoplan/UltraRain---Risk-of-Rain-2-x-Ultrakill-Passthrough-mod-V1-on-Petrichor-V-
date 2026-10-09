@@ -9,6 +9,9 @@ using UnityEngine;
 namespace V1Bridge.Ror
 {
     [BepInPlugin("dev.v1bridge.ror", "RorBridge", Proto.Version)]
+    [BepInDependency(R2API.ContentManagement.R2APIContentManager.PluginGUID)]
+    [BepInDependency(R2API.PrefabAPI.PluginGUID)]
+    [BepInDependency(R2API.LanguageAPI.PluginGUID)]
     public class Plugin : BaseUnityPlugin
     {
         internal static ManualLogSource Log;
@@ -34,6 +37,8 @@ namespace V1Bridge.Ror
             // what the game asks of mods: keeps modded players out of vanilla matchmaking
             RoR2.RoR2Application.isModded = true;
 
+            V1Survivor.Register();
+
             var go = new GameObject("RorBridge");
             DontDestroyOnLoad(go);
             go.hideFlags = HideFlags.HideAndDontSave;
@@ -58,6 +63,7 @@ namespace V1Bridge.Ror
         void Update()
         {
             UkLink.Pump();
+            Session.Tick();
             UkLauncher.Tick();
         }
 
