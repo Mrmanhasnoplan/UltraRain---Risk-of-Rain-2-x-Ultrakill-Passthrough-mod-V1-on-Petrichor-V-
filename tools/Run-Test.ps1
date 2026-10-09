@@ -80,6 +80,6 @@ if (Test-Path $results) { Get-Content $results -Raw } else { $notes += 'no resul
 "real save/config files watched: $($before.Count), changed: $($changed.Count)"
 $changed | ForEach-Object { "  $_" }
 $notes | ForEach-Object { "NOTE: $_" }
-$pass = (Test-Path $results) -and ((Get-Content $results -Raw) -match '"pass":\s*true') -and $changed.Count -eq 0 -and $notes.Count -eq 0
+$pass = (Test-Path $results) -and ((Get-Content $results -Raw | ConvertFrom-Json).pass -eq $true) -and $changed.Count -eq 0 -and $notes.Count -eq 0
 "RESULT: " + $(if ($pass) { 'PASS' } else { 'FAIL' })
 if (-not $pass) { exit 1 }

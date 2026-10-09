@@ -61,6 +61,7 @@ namespace V1Bridge.Ror
             {
                 case "handshake": body = Handshake(); break;
                 case "survivor": body = Survivor(); break;
+                case "picture": body = Picture(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -349,6 +350,136 @@ namespace V1Bridge.Ror
             yield return BackToTitle();
             Check("after the run: bridge off", !Session.Active && !Session.Wanted);
             Check("after the run: ULTRAKILL still up for the next one", UkLauncher.Running() != null && UkLink.Connected);
+            Check("nothing tried to write to Steam's storage", SaveGuard.Blocked == 0, SaveGuard.Blocked + " writes turned away");
+        }
+
+        // ------------------------------------------------------------ phase 3
+
+        /// <summary>Into a run as V1 with ULTRAKILL landed and its frames arriving.</summary>
+        IEnumerator V1Run()
+        {
+            yield return ToTitle();
+            if (failed) yield break;
+            if (!Check("V1 survivor registered", V1Survivor.Def != null, V1Survivor.Problem ?? "")) yield break;
+            yield return ToLobby();
+            if (failed) yield break;
+            yield return Pick(V1Survivor.Def);
+            float t = Now;
+            while (!V1Drive.UkReady && UkLink.Problem == null && UkLauncher.Problem == null && Now - t < 150f) yield return null;
+            metrics["uk_ready_seconds"] = F(Now - t);
+            if (!Check("ULTRAKILL reached the Sandbox and stripped it", V1Drive.UkReady, V1Drive.UkReady ? "" : UkLink.Problem ?? UkLauncher.Problem ?? "last seen in " + V1Drive.UkLoading)) yield break;
+            yield return StartRun();
+            if (failed) yield break;
+            t = Now;
+            while (!V1Drive.UkLanded && Now - t < 30f) yield return null;
+            if (!Check("V1 landed in ULTRAKILL", V1Drive.UkLanded, V1Drive.LandedInfo)) yield break;
+            t = Now;
+            while (Frames.Uploaded < 30 && Now - t < 30f) yield return null;
+            Check("ULTRAKILL frames are arriving", Frames.Uploaded >= 30, Frames.Uploaded + " frames, " + (Frames.Problem ?? "no problem reported"));
+            // the weapon draw animation and HUD fade-in
+            yield return new WaitForSecondsRealtime(3f);
+        }
+
+        IEnumerator Hold(float seconds, V1Drive.Frame input)
+        {
+            V1Drive.Script = () => input;
+            yield return new WaitForSecondsRealtime(seconds);
+            V1Drive.Script = () => default;
+        }
+
+        /// <summary>Phase 3: ULTRAKILL's picture is in Risk of Rain 2's window, RoR2 looks at the stage from ULTRAKILL's
+        /// view, keys and mouse reach V1, and the delay is measured.</summary>
+        IEnumerator Picture()
+        {
+            // scripted input from the start: nothing real reaches V1 during the test
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var user = LocalUserManager.GetFirstLocalUser();
+
+            // 1. the picture
+            int f0 = Frames.Uploaded, shown0 = Time.frameCount;
+            float t = Now;
+            yield return new WaitForSecondsRealtime(5f);
+            float ukFps = (Frames.Uploaded - f0) / (Now - t), rorFps = (Time.frameCount - shown0) / (Now - t);
+            metrics["uk_fps_shown"] = F(ukFps);
+            metrics["ror2_fps"] = F(rorFps);
+            metrics["frame_size"] = Frames.Shown.w + "x" + Frames.Shown.h;
+            metrics["frame_coverage"] = F(Frames.Shown.coverage);
+            Check("at least 30 ULTRAKILL frames a second shown", ukFps >= 30f, F(ukFps) + " fps (RoR2 " + F(rorFps) + ")");
+            Check("ULTRAKILL's layer covers part of the picture, not all of it", Frames.Shown.coverage > 0.01f && Frames.Shown.coverage < 0.7f, F(Frames.Shown.coverage * 100) + " %");
+            metrics["overlay"] = V1Drive.OverlayInfo();
+            yield return SnapRor("ror2-composite");
+            yield return SnapUk("uk");
+
+            // 2. RoR2 sees the stage from ULTRAKILL's view, and its body is where V1 is
+            var cam = user.cameraRigController != null ? user.cameraRigController.sceneCam : null;
+            if (Check("RoR2 scene camera found", cam != null))
+            {
+                float off = Vector3.Distance(cam.transform.position, V1Drive.ToRor(Frames.Shown.eye));
+                float ang = Quaternion.Angle(cam.transform.rotation, Quaternion.Euler(Frames.Shown.pitch, Frames.Shown.yaw, Frames.Shown.roll));
+                Check("RoR2 camera is at the frame's view", off < 0.05f && ang < 0.5f && Mathf.Abs(cam.fieldOfView - Frames.Shown.fov) < 0.5f,
+                    F(off) + " m, " + F(ang) + " deg off, fov " + F(cam.fieldOfView) + " vs " + F(Frames.Shown.fov));
+            }
+            float bodyOff = Vector3.Distance(user.cachedBody.footPosition, V1Drive.ToRor(V1Drive.Latest.feet));
+            Check("RoR2 body stands where V1 stands", bodyOff < 0.5f, F(bodyOff) + " m apart");
+
+            // 3. input: look, walk, jump
+            float yaw0 = V1Drive.Latest.yaw;
+            yield return Hold(0.5f, new V1Drive.Frame { dx = 12f });
+            yield return new WaitForSecondsRealtime(0.3f);
+            float turned = Mathf.DeltaAngle(yaw0, V1Drive.Latest.yaw);
+            metrics["look_degrees"] = F(turned);
+            Check("mouse right turns V1 right", turned > 3f, F(turned) + " degrees");
+            float pitch0 = V1Drive.Latest.pitch;
+            yield return Hold(0.3f, new V1Drive.Frame { dy = 6f });
+            yield return new WaitForSecondsRealtime(0.3f);
+            float lookedUp = Mathf.DeltaAngle(V1Drive.Latest.pitch, pitch0);
+            Check("mouse up looks up", lookedUp > 1f, F(lookedUp) + " degrees");
+
+            Vector3 p0 = V1Drive.Latest.feet;
+            Vector3 fwd = Quaternion.Euler(0f, V1Drive.Latest.yaw, 0f) * Vector3.forward;
+            yield return Hold(1.5f, new V1Drive.Frame { keys = new[] { KeyCode.W } });
+            yield return new WaitForSecondsRealtime(0.5f);
+            Vector3 moved = V1Drive.Latest.feet - p0;
+            metrics["walk_units"] = F(moved.magnitude);
+            Check("W walks V1 forward", Vector3.Dot(moved, fwd) > 5f, F(Vector3.Dot(moved, fwd)) + " units forward in 1.5 s (" + F(moved.magnitude / V1Drive.K) + " m)");
+            Check("V1 stops when the key is let go", V1Drive.Latest.velocity.magnitude < 1f, F(V1Drive.Latest.velocity.magnitude) + " units/s");
+
+            float y0 = V1Drive.Latest.feet.y, top = y0;
+            V1Drive.Script = () => new V1Drive.Frame { keys = new[] { KeyCode.Space } };
+            t = Now;
+            while (Now - t < 1.2f)
+            {
+                if (Now - t > 0.15f) V1Drive.Script = () => default;
+                top = Mathf.Max(top, V1Drive.Latest.feet.y);
+                yield return null;
+            }
+            metrics["jump_units"] = F(top - y0);
+            Check("Space jumps", top - y0 > 1f, F(top - y0) + " units up");
+            yield return new WaitForSecondsRealtime(1f);
+            Check("V1 is back on the ground", V1Drive.Latest.grounded);
+
+            // 4. the delay, measured while the view turns
+            Frames.FrameAge.Clear();
+            Frames.InputAge.Clear();
+            Frames.Merge.Clear();
+            Frames.UploadMs.Clear();
+            yield return Hold(4f, new V1Drive.Frame { dx = 3f });
+            metrics["frame_age_ms_avg"] = F(Frames.FrameAge.Average);
+            metrics["frame_age_ms_p95"] = F(Frames.FrameAge.P95);
+            metrics["input_to_upload_ms_avg"] = F(Frames.InputAge.Average);
+            metrics["input_to_upload_ms_p95"] = F(Frames.InputAge.P95);
+            metrics["merge_ms_avg"] = F(Frames.Merge.Average);
+            metrics["upload_ms_avg"] = F(Frames.UploadMs.Average);
+            Check("frames are shown within 50 ms of being drawn, on average", Frames.FrameAge.Count > 30 && Frames.FrameAge.Average < 50, F(Frames.FrameAge.Average) + " ms avg, " + F(Frames.FrameAge.P95) + " ms p95");
+            Check("input shows up in a frame within 80 ms, on average", Frames.InputAge.Count > 30 && Frames.InputAge.Average < 80, F(Frames.InputAge.Average) + " ms avg, " + F(Frames.InputAge.P95) + " ms p95");
+            yield return SnapRor("ror2-composite-after");
+
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && user.cachedBody != null && user.cachedBody.healthComponent.alive);
+            metrics["v1_hp"] = V1Drive.UkHp.ToString();
+            metrics["v1_weapons_per_slot"] = V1Drive.LandedInfo;
+            yield return BackToTitle();
             Check("nothing tried to write to Steam's storage", SaveGuard.Blocked == 0, SaveGuard.Blocked + " writes turned away");
         }
 

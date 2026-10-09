@@ -22,6 +22,10 @@
     <Reference Include="Unity.ResourceManager"><HintPath>$(Managed)\Unity.ResourceManager.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.PhysicsModule"><HintPath>$(Managed)\UnityEngine.PhysicsModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="LegacyResourcesAPI"><HintPath>$(Managed)\LegacyResourcesAPI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UI"><HintPath>$(Managed)\UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UIModule"><HintPath>$(Managed)\UnityEngine.UIModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Rewired_Core"><HintPath>$(Managed)\Rewired_Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="KinematicCharacterController"><HintPath>$(Managed)\KinematicCharacterController.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Zio"><HintPath>$(Managed)\Zio.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="HGCSharpUtils"><HintPath>$(Managed)\HGCSharpUtils.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine"><HintPath>$(Managed)\UnityEngine.dll</HintPath><Private>false</Private></Reference>

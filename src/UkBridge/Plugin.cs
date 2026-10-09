@@ -33,6 +33,7 @@ namespace V1Bridge.Uk
                 Log.LogInfo("UkBridge loaded without " + Proto.UkArgActive + ": idle");
                 return;
             }
+            harmony.PatchAll(typeof(Plugin).Assembly);
             Application.runInBackground = true;
             var go = new GameObject("UkBridge");
             DontDestroyOnLoad(go);

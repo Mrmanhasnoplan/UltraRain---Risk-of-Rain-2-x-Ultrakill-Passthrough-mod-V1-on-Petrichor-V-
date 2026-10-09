@@ -19,6 +19,8 @@ namespace V1Bridge.Ror
         internal static string ProfileDir;
         internal static ConfigEntry<string> UkProfileDir;
         internal static ConfigEntry<int> Port;
+        internal static ConfigEntry<int> UkHeight;
+        internal static ConfigEntry<int> UkFps;
 
         internal static string Arg(string name)
         {
@@ -33,7 +35,11 @@ namespace V1Bridge.Ror
             ProfileDir = Path.GetDirectoryName(Paths.BepInExRootPath);
             UkProfileDir = Config.Bind("ULTRAKILL", "ProfileDir", "", "The BepInEx profile ULTRAKILL is started with. Empty: the 'uk' folder next to this profile.");
             Port = Config.Bind("Link", "Port", Proto.DefaultPort, "Loopback port UkBridge listens on.");
-            SaveGuard.Apply(new Harmony("dev.v1bridge.ror"));
+            UkHeight = Config.Bind("Performance", "UltrakillHeight", 720, "Height ULTRAKILL renders at (its width follows this window's shape). Lower is faster.");
+            UkFps = Config.Bind("Performance", "UltrakillFpsCap", 120, "ULTRAKILL's frame rate cap.");
+            var harmony = new Harmony("dev.v1bridge.ror");
+            SaveGuard.Apply(harmony);
+            harmony.PatchAll(typeof(Plugin).Assembly);
             // what the game asks of mods: keeps modded players out of vanilla matchmaking
             RoR2.RoR2Application.isModded = true;
 
@@ -55,6 +61,7 @@ namespace V1Bridge.Ror
         void Awake()
         {
             I = this;
+            UkLink.OnMessage += V1Drive.OnMessage;
             UkLink.Start(Plugin.Port.Value);
             string test = Plugin.Arg(TestMode.ArgName);
             if (test != null) gameObject.AddComponent<TestMode>().Begin(test, Plugin.Arg(TestMode.ArgOut));
@@ -64,7 +71,13 @@ namespace V1Bridge.Ror
         {
             UkLink.Pump();
             Session.Tick();
+            V1Drive.Tick();
             UkLauncher.Tick();
+        }
+
+        void LateUpdate()
+        {
+            V1Drive.LateTick();
         }
 
         void OnApplicationQuit()

@@ -47,6 +47,8 @@ namespace V1Bridge.Ror
             body.subtitleNameToken = "V1BRIDGE_V1_SUBTITLE";
             body.portraitIcon = Art.Portrait();
             body.bodyColor = Blue;
+            // no drop pod: V1 is put down where the run starts, and ULTRAKILL takes it from there
+            body.preferredPodPrefab = null;
 
             var skills = BodyPrefab.GetComponent<SkillLocator>();
             Skill(skills.primary, "Primary", "V1BRIDGE_V1_PRIMARY", new Color(0.25f, 0.55f, 1f));

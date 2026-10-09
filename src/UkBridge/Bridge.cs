@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace V1Bridge.Uk
 {
-    public class Bridge : MonoBehaviour
+    public partial class Bridge : MonoBehaviour
     {
         int parentPid;
         float nextPark, nextParentCheck;
@@ -19,6 +19,8 @@ namespace V1Bridge.Uk
             int.TryParse(Plugin.Arg(Proto.UkArgParent), out parentPid);
             try { Net.Start(port); }
             catch (Exception e) { Plugin.Log.LogError("can't listen on " + port + ": " + e.Message); }
+            try { MapFrames(); StartCoroutine(Capture()); }
+            catch (Exception e) { Plugin.Log.LogError("frame file: " + e); }
             Win32.IgnoreTimerThrottling();
             Plugin.Log.LogInfo("listening on 127.0.0.1:" + port + (parentPid > 0 ? ", closing with process " + parentPid : ""));
         }
@@ -30,11 +32,14 @@ namespace V1Bridge.Uk
                 try { Handle(line); }
                 catch (Exception e) { Plugin.Log.LogWarning("handle '" + line + "': " + e); }
             }
+            UpdateLevel();
+            InjectInput();
+            SendPose();
             // out of sight from the first frame: off-screen, never minimised (a minimised Unity window stops drawing)
             if (Time.unscaledTime > nextPark)
             {
                 nextPark = Time.unscaledTime + (Net.Connected ? 2f : 0.25f);
-                if (Screen.fullScreenMode != FullScreenMode.Windowed) Screen.SetResolution(1280, 720, FullScreenMode.Windowed);
+                if (Screen.fullScreenMode != FullScreenMode.Windowed) Screen.SetResolution(wantW, wantH, FullScreenMode.Windowed);
                 else Win32.ParkWindow();
             }
             // ULTRAKILL closes with Risk of Rain 2, however RoR2 went (a crash sends no QUIT)
@@ -72,6 +77,27 @@ namespace V1Bridge.Uk
                     break;
                 case "DISCONNECTED":
                     Plugin.Log.LogInfo("Risk of Rain 2 disconnected");
+                    // let go of everything, or V1 keeps running on the last keys held
+                    ReleaseInput();
+                    idle = true;
+                    break;
+                case Proto.Size:
+                {
+                    var a = rest.Split(' ');
+                    int w = int.Parse(a[0]), h = int.Parse(a[1]);
+                    if ((long)w * h <= Proto.FrameMaxPixels && w >= 320 && h >= 180) { wantW = w; wantH = h; }
+                    if (a.Length > 2) fpsCap = Mathf.Clamp(int.Parse(a[2]), 20, 1000);
+                    break;
+                }
+                case Proto.Tp:
+                    Teleport(rest);
+                    break;
+                case Proto.Input:
+                    OnInput(rest);
+                    break;
+                case Proto.Idle:
+                    idle = rest.Trim() == "1";
+                    if (idle) ReleaseInput();
                     break;
                 case Proto.Hello:
                 {
@@ -97,9 +123,9 @@ namespace V1Bridge.Uk
             }
         }
 
-        static string StateLine()
+        string StateLine()
         {
-            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " res=" + Screen.width + "x" + Screen.height
+            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " res=" + Screen.width + "x" + Screen.height
                    + " t=" + Time.unscaledTime.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " blocked=" + SaveGuard.Blocked
                    + " saves=" + GameProgressSaver.BaseSavePath.Replace(' ', '?');
         }
@@ -110,7 +136,17 @@ namespace V1Bridge.Uk
             yield return new WaitForEndOfFrame();
             try
             {
-                var tex = ScreenCapture.CaptureScreenshotAsTexture();
+                Texture2D tex;
+                if (finalRT != null && hookedCam != null)
+                {
+                    // once the Virtual Camera draws into our texture the window itself no longer changes
+                    var prev = RenderTexture.active;
+                    RenderTexture.active = finalRT;
+                    tex = new Texture2D(finalRT.width, finalRT.height, TextureFormat.RGBA32, false);
+                    tex.ReadPixels(new Rect(0, 0, finalRT.width, finalRT.height), 0, 0);
+                    RenderTexture.active = prev;
+                }
+                else tex = ScreenCapture.CaptureScreenshotAsTexture();
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
                 File.WriteAllBytes(path, tex.EncodeToPNG());
                 Destroy(tex);

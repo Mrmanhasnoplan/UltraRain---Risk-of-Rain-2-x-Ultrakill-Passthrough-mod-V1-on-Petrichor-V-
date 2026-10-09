@@ -9,8 +9,9 @@ Working log for the V1-in-RoR2 bridge. Design: [docs/DESIGN.md](docs/DESIGN.md).
 | 0 Recon | done 2026-10-09 |
 | 1 Handshake, launch/stop, test mode | done 2026-10-09 (`handshake` scenario passes) |
 | 2 V1 in character select | done 2026-10-09 (`survivor` scenario passes) |
-| 3 ULTRAKILL's picture + input | next |
-| 4–7 | not started |
+| 3 ULTRAKILL's picture + input | done 2026-10-09 (`picture` scenario passes) |
+| 4 Stage geometry as collision | next |
+| 5–7 | not started |
 
 ## How to work on it
 
@@ -51,6 +52,26 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   runs and closes with RoR2.
 - Test mode starts runs with `transition_command "gamemode ClassicRun; host 0;"`, `SetSurvivorPreferenceClient`,
   the `run_scene_override` convar (set by reflection; it is cheat-flagged) and `pregame_start_run`.
+- ULTRAKILL level (`UkBridge/Level.cs`, after Ultracraft): intro/tutorial reads patched, Sandbox `uk_construct` loaded
+  and stripped to V1's rig + HUD + gore pools, camera cleared to transparent black, V1 switched on by hand on the first `TP`.
+  All gear owned (`CheckGear` → 1). Until Phase 4 V1 stands on a flat collider at y = 0.
+- Coordinates: ULTRAKILL's origin is laid at the RoR2 body's feet when the run engages; `K = 3.5/1.82` ULTRAKILL units
+  per metre, same axes (both Unity). Wire positions are ULTRAKILL's; RorBridge converts (`V1Drive.ToRor/ToUk`).
+- Picture (`Frames.cs` on both sides): ULTRAKILL's Virtual Camera draws into our RenderTexture; colour and the
+  pre-post-process target are read back with AsyncGPUReadback straight into `%TEMP%\v1bridge_frame.bin` (4 slots,
+  header with sequence, QPC draw time, the input the frame was drawn with, and the camera pose); a named event wakes a
+  worker thread in RoR2 that joins colour + coverage (alpha, or brightness where nothing wrote alpha) into one RGBA
+  image; the main thread uploads it to a Texture2D shown by a RawImage on our own canvas on RoR2's UI camera, ordered
+  under the HUD. No custom shader is needed on either side.
+- View: RoR2's `CameraRigController` gets an `ICameraStateProvider` (must be a MonoBehaviour) returning the pose and
+  FOV of the frame on screen. The RoR2 body is moved to V1's feet every LateUpdate with its CharacterMotor and
+  KinematicCharacterMotor off and its model hidden; no drop pod for V1.
+- Input: Rewired mouse deltas/buttons and `Keyboard.PollForAllKeys` (Escape kept for RoR2) are sent every frame as
+  `IN`; UkBridge plays them through its own Input System keyboard and mouse and applies look with ULTRAKILL's own
+  sensitivity maths. Nothing is sent while RoR2 is paused, unfocused or has the cursor free.
+- RoR2's own key handling for V1 is skipped by a Harmony prefix on `PlayerCharacterMasterController.Update/FixedUpdate`.
+- ULTRAKILL renders at 720p (config `UltrakillHeight`), 120 fps cap (`UltrakillFpsCap`), and ticks at 10 fps while RoR2
+  is not in a V1 run (`IDLE`).
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
 
@@ -65,6 +86,13 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - BepInExPack's preloader deletes `plugins\RoR2BepInExPack` on sight (the pack's pre-r2modman location), after which
   R2API refuses to load. Packages must sit in `plugins\<Author-Name>\...` as r2modman lays them out; `Setup-Profiles.ps1` does.
 - R2API (Core 5.3.0, ContentManagement 1.0.11, Prefab 1.1.1, Language 1.1.0) works on the 2026-10-08 RoR2 build.
+- Disabling `PlayerCharacterMasterController` removes the player from `instances`, and the run ends in defeat at once.
+- `CameraRigController` casts its override provider to `UnityEngine.Object`: a plain class throws every frame.
+- A child added to RoR2's HUD canvas is deactivated by the HUD; the ULTRAKILL layer needs its own canvas.
+- Mono's `Stopwatch.GetTimestamp` counts from process start, so the two games cannot compare it; `Clock.Micros()` calls
+  QueryPerformanceCounter directly.
+- Once ULTRAKILL's Virtual Camera targets our texture its window stops updating; screenshots are read from the texture.
+- RoR2 ran vsynced at ~60 fps during tests, so 60 of ULTRAKILL's 120 frames a second are shown.
 - RoR2 reads user profiles a moment *after* the title scene appears, and re-sends every owned achievement to Steam on
   each start (160 calls, skipped by the guard).
 - Skipping RoR2's intro (`set_scene title`) before `RoR2Application.loadFinished` breaks its `onLoad` chain
@@ -80,6 +108,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-09 23:56 | picture (golemplains) | PASS (32/32, 0 real files changed) | ULTRAKILL ready 13 s after pick; 1280x720, 59.5 fps shown; frame age 23 ms avg / 28 ms p95; input sent → frame uploaded 34 ms avg / 35 ms p95; merge 5.0 ms (worker thread), upload 0.3 ms; walk 13 m in 1.5 s, jump 9.7 units |
 | 2026-10-09 23:40 | survivor (golemplains) | PASS (39/39 checks, 0 of 128 watched real files changed) | V1 is survivor 0 of 22; pick-to-handshake 4.2 s; V1 body 110 HP / 12 damage at level 1 |
 | 2026-10-09 23:31 | handshake | PASS (16/16 checks, 0 of 128 watched real files changed) | RoR2 to menu 40 s; ULTRAKILL process to handshake 4.6 s; ping 0.20 ms avg / 1.07 ms max over 100; ULTRAKILL quit 0.6 s after QUIT |
 
@@ -93,7 +122,12 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 ## Known issues
 
-- In a V1 run the body still looks and moves like Commando (with no attacks) until Phase 3 takes over view and input.
+- V1 walks on a flat plane at the spawn height, not on the stage, until Phase 4.
+- RoR2's health bar, skill icons and crosshair still show over ULTRAKILL's HUD (to be hidden in Phase 6/7).
+- RoR2's game-over report throws `ArgumentOutOfRangeException` in `GameEndReportPanelController.SetDisplayData` for V1 (seen when a run ended in defeat); to fix in Phase 6.
+- ULTRAKILL logs "loadout: The Object you want to instantiate is null" when building the all-gear loadout (weapons 3/3/3/3/3/4 per slot still arrive).
+- Mouse sensitivity mapping (Rewired counts → ULTRAKILL look) is untested by a human.
+- The colour/coverage join costs ~5 ms per frame on a worker thread at 720p; a candidate for optimisation in Phase 7.
 - RoR2 settings changed while on the bridge profile are saved to the sandbox, not to the real `Config\config.cfg`.
 - `Playlist.directory` and `CustomPaletteSelector` in ULTRAKILL still point at the real `Preferences\Playlists` and
   `Palettes` folders (Cyber Grind playlists, custom palettes); nothing in the bridge writes them, but they are not redirected.
