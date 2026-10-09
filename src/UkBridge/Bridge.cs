@@ -92,6 +92,15 @@ namespace V1Bridge.Uk
                 case Proto.Tp:
                     Teleport(rest);
                     break;
+                case Proto.Geo:
+                    LoadStage(rest);
+                    break;
+                case Proto.GeoClear:
+                    ClearStage();
+                    break;
+                case Proto.Probe:
+                    Net.Send(Proto.Probed + " " + Probe(rest));
+                    break;
                 case Proto.Input:
                     OnInput(rest);
                     break;

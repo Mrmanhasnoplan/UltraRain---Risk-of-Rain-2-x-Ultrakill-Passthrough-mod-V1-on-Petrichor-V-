@@ -6,7 +6,7 @@ namespace V1Bridge
     {
         public const string Version = "0.1.0";
         /// <summary>Bumped whenever a message or the frame file changes shape; the handshake refuses a mismatch.</summary>
-        public const int Protocol = 2;
+        public const int Protocol = 3;
         /// <summary>Not Ultracraft's 27110, so both can be installed side by side.</summary>
         public const int DefaultPort = 27120;
 
@@ -29,11 +29,16 @@ namespace V1Bridge
         public const string Size = "SIZE";         // SIZE <w> <h> <fps cap>: what ULTRAKILL renders at
         public const string Tp = "TP";             // TP <x> <y> <z> <yaw> <pitch>: V1's feet, ULTRAKILL coordinates
         public const string Input = "IN";          // IN <seq> <sent at, QPC microseconds> <dx> <dy> <wheel> <buttons> <KeyCode>...
+        public const string Geo = "GEO";           // GEO <path>: the stage's colliders (StageGeometry's file), replacing any before -> GEODONE
+        public const string GeoClear = "GEOCLR";   // the stage is gone
+        public const string Probe = "PROBE";       // PROBE <x> <y> <z> -> PROBED <ground y below that point> <collider> | PROBED none
         public const string Idle = "IDLE";         // IDLE 0|1: Risk of Rain 2 is not in a V1 run; ULTRAKILL stops drawing frames
 
         // level (ULTRAKILL -> RoR2)
         public const string Loading = "LOADING";   // LOADING <scene>: not ready yet, and where it is
         public const string Ready = "READY";       // the Sandbox is stripped down to V1 and waiting for a TP
+        public const string GeoDone = "GEODONE";   // GEODONE <colliders> <triangles> <ms> <ok|problem>
+        public const string Probed = "PROBED";
         public const string Landed = "LANDED";     // V1 is switched on (movement, camera, weapons, HUD)
         public const string Pose = "P";            // P <feet xyz> <eye xyz> <yaw> <pitch> <roll> <fov> <vel xyz> <grounded> <sliding>
         public const string Hp = "HP";             // HP <hp> <dead 0|1>

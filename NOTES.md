@@ -10,8 +10,9 @@ Working log for the V1-in-RoR2 bridge. Design: [docs/DESIGN.md](docs/DESIGN.md).
 | 1 Handshake, launch/stop, test mode | done 2026-10-09 (`handshake` scenario passes) |
 | 2 V1 in character select | done 2026-10-09 (`survivor` scenario passes) |
 | 3 ULTRAKILL's picture + input | done 2026-10-09 (`picture` scenario passes) |
-| 4 Stage geometry as collision | next |
-| 5–7 | not started |
+| 4 Stage geometry as collision | done 2026-10-10 (`geometry` scenario passes) |
+| 5 Monsters and damage | next |
+| 6–7 | not started |
 
 ## How to work on it
 
@@ -72,6 +73,12 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - RoR2's own key handling for V1 is skipped by a Harmony prefix on `PlayerCharacterMasterController.Update/FixedUpdate`.
 - ULTRAKILL renders at 720p (config `UltrakillHeight`), 120 fps cap (`UltrakillFpsCap`), and ticks at 10 fps while RoR2
   is not in a V1 run (`IDLE`).
+- Stage geometry (`StageGeometry.cs` → `UkBridge/Geometry.cs`): when a V1 run engages, every enabled non-trigger collider
+  on RoR2's World layer (mesh, box, sphere, capsule, terrain; not loose rigidbodies) is written as triangles in
+  ULTRAKILL coordinates to `%TEMP%\v1bridge_geo_N.bin`; `GEO <path>` has UkBridge build one MeshCollider each (layer 8,
+  tag Floor) with a depth-only, transparent-black renderer (Ultracraft's occluder), a slice per frame; `GEODONE` then
+  releases the `TP` that puts V1 down. Unreadable meshes are read back from their GPU vertex/index buffers.
+  V1 falling 30 m below the stage's bounds is put back at the start.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
 
@@ -108,6 +115,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-10 00:01 | geometry (golemplains) | PASS (30/30, 0 real files changed) | 142 colliders, 206,244 triangles; export 78 ms, build in ULTRAKILL 153 ms; ground height equal within 2 mm at 81/81 points; V1 walked 27 m over terrain, feet 1 mm above RoR2's ground |
 | 2026-10-09 23:56 | picture (golemplains) | PASS (32/32, 0 real files changed) | ULTRAKILL ready 13 s after pick; 1280x720, 59.5 fps shown; frame age 23 ms avg / 28 ms p95; input sent → frame uploaded 34 ms avg / 35 ms p95; merge 5.0 ms (worker thread), upload 0.3 ms; walk 13 m in 1.5 s, jump 9.7 units |
 | 2026-10-09 23:40 | survivor (golemplains) | PASS (39/39 checks, 0 of 128 watched real files changed) | V1 is survivor 0 of 22; pick-to-handshake 4.2 s; V1 body 110 HP / 12 damage at level 1 |
 | 2026-10-09 23:31 | handshake | PASS (16/16 checks, 0 of 128 watched real files changed) | RoR2 to menu 40 s; ULTRAKILL process to handshake 4.6 s; ping 0.20 ms avg / 1.07 ms max over 100; ULTRAKILL quit 0.6 s after QUIT |
@@ -122,7 +130,10 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 ## Known issues
 
-- V1 walks on a flat plane at the spawn height, not on the stage, until Phase 4.
+- Stage geometry is a snapshot taken when the run engages: moving platforms, doors and anything spawned later are not mirrored yet.
+- RoR2's character-only invisible walls (CollideWithCharacterHullOnly layer) are not mirrored: V1 can walk past map edges RoR2 survivors cannot.
+- Only golemplains has been tested; stages with unreadable collision meshes will exercise the GPU read-back path for the first time.
+- Monsters already hurt the RoR2 body during a V1 run, but ULTRAKILL's health does not follow until Phase 5.
 - RoR2's health bar, skill icons and crosshair still show over ULTRAKILL's HUD (to be hidden in Phase 6/7).
 - RoR2's game-over report throws `ArgumentOutOfRangeException` in `GameEndReportPanelController.SetDisplayData` for V1 (seen when a run ended in defeat); to fix in Phase 6.
 - ULTRAKILL logs "loadout: The Object you want to instantiate is null" when building the all-gear loadout (weapons 3/3/3/3/3/4 per slot still arrive).

@@ -31,6 +31,8 @@ namespace V1Bridge.Uk
                 v1Landed = false;
                 sawLevelStart = false;
                 worldRoot = null;
+                stageRoot = null;
+                stageMeshes.Clear();
                 Plugin.Log.LogInfo("scene: " + scene);
             }
             // the menus are skipped: V1 is needed in the Sandbox
@@ -116,26 +118,11 @@ namespace V1Bridge.Uk
             foreach (var cam in Camera.allCameras) if (cam.useOcclusionCulling) cam.useOcclusionCulling = false;
 
             worldRoot = new GameObject("V1Bridge world");
-            BuildFloor();
             // held still until Risk of Rain 2 says where V1 stands
             nm.rb.isKinematic = true;
             levelPrepared = true;
             Net.Send(Proto.Ready);
             Plugin.Log.LogInfo("level prepared, hid " + hidden + " renderers/colliders");
-        }
-
-        /// <summary>Until the stage's own geometry arrives (phase 4): flat ground at y = 0 to stand on.</summary>
-        void BuildFloor()
-        {
-            var go = new GameObject("flat ground");
-            go.transform.SetParent(worldRoot.transform, false);
-            go.layer = 8; // Environment
-            go.tag = "Floor";
-            var bc = go.AddComponent<BoxCollider>();
-            bc.size = new Vector3(4000f, 10f, 4000f);
-            bc.center = new Vector3(0f, -5f, 0f);
-            // ULTRAKILL's weapons only treat a collider with a renderer as static environment
-            go.AddComponent<MeshRenderer>();
         }
 
         /// <summary>TP x y z yaw pitch: V1's feet. The first one switches V1 on.</summary>

@@ -33,6 +33,11 @@ namespace V1Bridge.Ror
             public bool grounded, sliding;
         }
 
+        public static StageGeometry.Result Stage;
+        /// <summary>GEODONE's numbers: colliders, triangles, milliseconds, ok or what went wrong.</summary>
+        public static string StageLoaded;
+        static string pendingTp;
+        static int geoSerial;
         static bool engaged, idleSent = true;
         static CharacterBody body;
         static CameraRigController rig;
@@ -67,6 +72,13 @@ namespace V1Bridge.Ror
                     UkReady = true;
                     UkLanded = false;
                     Plugin.Log.LogInfo("ULTRAKILL is ready for V1");
+                    break;
+                case Proto.GeoDone:
+                    StageLoaded = rest;
+                    Plugin.Log.LogInfo("ULTRAKILL built the stage: " + rest);
+                    // the ground is there: V1 can be put down
+                    if (pendingTp != null) UkLink.Send(Proto.Tp + " " + pendingTp);
+                    pendingTp = null;
                     break;
                 case Proto.Landed:
                     UkLanded = true;
@@ -137,7 +149,12 @@ namespace V1Bridge.Ror
             int w = Mathf.RoundToInt(h * (Screen.width / (float)Screen.height) / 2f) * 2;
             UkLink.Send(Proto.Size + " " + w + " " + h + " " + Plugin.UkFps.Value);
             float yaw = b.inputBank != null ? Quaternion.LookRotation(b.inputBank.aimDirection).eulerAngles.y : 0f;
-            UkLink.Send(Proto.Tp + " 0 0 0 " + S(yaw) + " 0");
+            Stage = StageGeometry.Export(Origin, K, ++geoSerial % 2);
+            StageLoaded = null;
+            Plugin.Log.LogInfo("stage exported: " + Stage.objects + " colliders, " + Stage.triangles + " triangles (" + Stage.unreadable + " meshes read from the GPU, " + Stage.skipped
+                               + " skipped) in " + Stage.ms.ToString("0") + " ms" + (Stage.problem != null ? ", problem: " + Stage.problem : ""));
+            pendingTp = "0 0 0 " + S(yaw) + " 0";
+            UkLink.Send(Proto.Geo + " " + Stage.path);
 
             // RoR2 stops moving and aiming this body: V1's place and view are ULTRAKILL's
             disabled.Clear();
@@ -265,6 +282,13 @@ namespace V1Bridge.Ror
         {
             if (!engaged || !UkLanded || !HavePose || body == null) return;
             var feet = ToRor(Latest.feet);
+            // fell out of the stage: back to where the run put V1 down
+            if (Stage.objects > 0 && feet.y < Stage.bounds.min.y - 30f && pendingTp == null)
+            {
+                Plugin.Log.LogInfo("V1 fell out of the stage: back to the start");
+                UkLink.Send(Proto.Tp + " 0 0.5 0 " + S(Latest.yaw) + " 0");
+                return;
+            }
             var t = body.transform;
             // the body's transform sits at its capsule's middle
             t.position = feet + (t.position - body.footPosition);

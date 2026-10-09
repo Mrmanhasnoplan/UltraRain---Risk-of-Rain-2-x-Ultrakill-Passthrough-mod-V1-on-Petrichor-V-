@@ -26,6 +26,7 @@ namespace V1Bridge.Ror
         bool failed;
         string snapReply;
         string stateReply;
+        string probeReply;
 
         public void Begin(string name, string dir)
         {
@@ -41,6 +42,7 @@ namespace V1Bridge.Ror
         {
             if (cmd == Proto.Snapped || cmd == Proto.SnapFail) snapReply = cmd + " " + rest;
             if (cmd == Proto.State) stateReply = rest;
+            if (cmd == Proto.Probed) probeReply = rest;
         }
 
         static string F(double v) => v.ToString("0.###", CultureInfo.InvariantCulture);
@@ -62,6 +64,7 @@ namespace V1Bridge.Ror
                 case "handshake": body = Handshake(); break;
                 case "survivor": body = Survivor(); break;
                 case "picture": body = Picture(); break;
+                case "geometry": body = Geometry(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -481,6 +484,102 @@ namespace V1Bridge.Ror
             metrics["v1_weapons_per_slot"] = V1Drive.LandedInfo;
             yield return BackToTitle();
             Check("nothing tried to write to Steam's storage", SaveGuard.Blocked == 0, SaveGuard.Blocked + " writes turned away");
+        }
+
+        // ------------------------------------------------------------ phase 4
+
+        /// <summary>Phase 4: the stage's colliders exist in ULTRAKILL where RoR2 has them, and V1 stands and walks on the
+        /// stage's ground.</summary>
+        IEnumerator Geometry()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var user = LocalUserManager.GetFirstLocalUser();
+            var st = V1Drive.Stage;
+            metrics["stage_colliders"] = st.objects.ToString();
+            metrics["stage_triangles"] = st.triangles.ToString();
+            metrics["stage_meshes_read_from_gpu"] = st.unreadable.ToString();
+            metrics["stage_skipped"] = st.skipped.ToString();
+            metrics["stage_export_ms"] = F(st.ms);
+            metrics["stage_bounds"] = st.bounds.min + " .. " + st.bounds.max;
+            metrics["stage_loaded"] = V1Drive.StageLoaded ?? "no reply";
+            Check("stage exported", st.objects > 10 && st.triangles > 5000 && st.problem == null, st.objects + " colliders, " + st.triangles + " triangles" + (st.problem != null ? ", " + st.problem : ""));
+            var done = (V1Drive.StageLoaded ?? "").Split(' ');
+            Check("ULTRAKILL built every collider", done.Length >= 4 && done[0] == st.objects.ToString() && done[1] == st.triangles.ToString() && done[3] == "ok", V1Drive.StageLoaded ?? "no GEODONE");
+
+            // 1. the same ground in both games: straight down from the same points, a grid round the start
+            int mask = LayerIndex.world.mask;
+            int sampled = 0, same = 0, missing = 0;
+            float worst = 0f;
+            for (int gx = -4; gx <= 4; gx++)
+            {
+                for (int gz = -4; gz <= 4; gz++)
+                {
+                    var from = V1Drive.Origin + new Vector3(gx * 12f, 80f, gz * 12f);
+                    if (!Physics.Raycast(from, Vector3.down, out var hit, 400f, mask, QueryTriggerInteraction.Ignore)) continue;
+                    var uk = V1Drive.ToUk(from);
+                    probeReply = null;
+                    UkLink.Send(Proto.Probe + " " + F(uk.x) + " " + F(uk.y) + " " + F(uk.z));
+                    float t = Now;
+                    while (probeReply == null && Now - t < 5f) yield return null;
+                    sampled++;
+                    if (probeReply == null || probeReply.StartsWith("none")) { missing++; continue; }
+                    float ukY = float.Parse(probeReply.Split(' ')[0], CultureInfo.InvariantCulture);
+                    float diff = Mathf.Abs(V1Drive.ToRor(new Vector3(uk.x, ukY, uk.z)).y - hit.point.y);
+                    worst = Mathf.Max(worst, diff);
+                    if (diff < 0.1f) same++;
+                }
+            }
+            metrics["ground_points_sampled"] = sampled.ToString();
+            metrics["ground_points_matching"] = same.ToString();
+            metrics["ground_worst_difference_m"] = F(worst);
+            Check("the ground is at the same height in both games", sampled >= 20 && same >= sampled * 0.95f, same + " of " + sampled + " points within 10 cm, " + missing + " with nothing under them in ULTRAKILL, worst " + F(worst) + " m");
+
+            // 2. V1 stands on it
+            yield return new WaitForSecondsRealtime(1.5f);
+            Check("V1 is standing on the ground", V1Drive.Latest.grounded, "feet " + V1Drive.ToRor(V1Drive.Latest.feet));
+            yield return StandingCheck("at the start");
+            yield return SnapRor("ror2-start");
+
+            // 3. and walks over it: the ground rises and falls under V1, V1 stays on it
+            Vector3 p0 = V1Drive.ToRor(V1Drive.Latest.feet);
+            float minY = p0.y, maxY = p0.y;
+            V1Drive.Script = () => new V1Drive.Frame { keys = new[] { KeyCode.W } };
+            float w0 = Now;
+            while (Now - w0 < 4f)
+            {
+                float y = V1Drive.ToRor(V1Drive.Latest.feet).y;
+                minY = Mathf.Min(minY, y);
+                maxY = Mathf.Max(maxY, y);
+                yield return null;
+            }
+            V1Drive.Script = () => default;
+            yield return new WaitForSecondsRealtime(1f);
+            Vector3 p1 = V1Drive.ToRor(V1Drive.Latest.feet);
+            float flat = new Vector2(p1.x - p0.x, p1.z - p0.z).magnitude;
+            metrics["walked_m"] = F(flat);
+            metrics["walk_height_range_m"] = F(maxY - minY);
+            Check("V1 walked across the stage", flat > 8f, F(flat) + " m, height changing by " + F(maxY - minY) + " m on the way");
+            Check("V1 is still on the ground after walking", V1Drive.Latest.grounded);
+            yield return StandingCheck("after walking");
+            Check("V1 did not fall out of the stage", p1.y > st.bounds.min.y - 5f, "feet at " + F(p1.y) + ", stage bottom " + F(st.bounds.min.y));
+            yield return SnapRor("ror2-after-walk");
+            yield return SnapUk("uk");
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && user.cachedBody != null && user.cachedBody.healthComponent.alive);
+            yield return BackToTitle();
+        }
+
+        /// <summary>V1's feet against RoR2's own ground under them.</summary>
+        IEnumerator StandingCheck(string when)
+        {
+            var feet = V1Drive.ToRor(V1Drive.Latest.feet);
+            bool hit = Physics.Raycast(feet + Vector3.up * 2f, Vector3.down, out var h, 50f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore);
+            float gap = hit ? feet.y - h.point.y : 999f;
+            Check("V1's feet are on RoR2's ground " + when, hit && Mathf.Abs(gap) < 0.25f, hit ? F(gap) + " m above " + h.collider.name : "no RoR2 ground below V1");
+            var body = LocalUserManager.GetFirstLocalUser().cachedBody;
+            Check("RoR2's body is at V1's feet " + when, body != null && Vector3.Distance(body.footPosition, feet) < 0.3f, body != null ? F(Vector3.Distance(body.footPosition, feet)) + " m" : "no body");
+            yield break;
         }
 
         static string Q(string s)
