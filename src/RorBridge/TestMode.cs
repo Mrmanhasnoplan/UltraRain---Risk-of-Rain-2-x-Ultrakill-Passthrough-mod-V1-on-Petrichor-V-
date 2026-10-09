@@ -66,6 +66,7 @@ namespace V1Bridge.Ror
                 case "picture": body = Picture(); break;
                 case "geometry": body = Geometry(); break;
                 case "combat": body = Combat(); break;
+                case "parry": body = ParryTest(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -796,6 +797,144 @@ namespace V1Bridge.Ror
             metrics["hits_applied"] = Monsters.HitsApplied.ToString();
             metrics["v1_was_hurt_by"] = string.Join(", ", attackers.ToArray());
             metrics["heal_sent_total"] = F(HealsReachV1.Sent);
+            yield return BackToTitle();
+        }
+
+        /// <summary>Only the monsters the test brings: the directors stop, and whatever else arrives is removed.</summary>
+        void QuietStage(CharacterBody v1)
+        {
+            foreach (var d in FindObjectsOfType<CombatDirector>()) d.enabled = false;
+            CharacterBody.onBodyStartGlobal += b =>
+            {
+                RoR2Application.onNextUpdate += () =>
+                {
+                    if (b != null && b != v1 && b.teamComponent != null && b.teamComponent.teamIndex != TeamIndex.Player && !testMasters.Contains(b.master) && b.healthComponent != null) b.healthComponent.Suicide();
+                };
+            };
+            foreach (var b in new List<CharacterBody>(CharacterBody.readOnlyInstancesList))
+            {
+                if (b != null && b != v1 && b.teamComponent != null && b.teamComponent.teamIndex != TeamIndex.Player && b.healthComponent != null) b.healthComponent.Suicide();
+            }
+        }
+
+        IEnumerator WaitVulnerable()
+        {
+            for (int i = 0; i < 12; i++)
+            {
+                yield return UkState();
+                if (StateValue(stateReply, "layer") != "15") break;
+                yield return new WaitForSecondsRealtime(0.4f);
+            }
+        }
+
+        /// <summary>Parry: a punch that meets a monster's melee hit cancels it and returns it; an unparried hit lands after
+        /// the parry window; a projectile caught by the fist never arrives and its owner pays.</summary>
+        IEnumerator ParryTest()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            QuietStage(v1);
+            var hurtBy = new List<string>();
+            GlobalEventManager.onServerDamageDealt += report =>
+            {
+                if (report.victimBody == v1 && hurtBy.Count < 10) hurtBy.Add((report.attackerBody != null ? report.attackerBody.name : "nobody") + " " + F(report.damageDealt) + " @" + F(Now));
+            };
+            yield return new WaitForSecondsRealtime(2f);
+            float unit = Monsters.UnitDamage(v1);
+
+            // 1. melee, parried: the fist lands, the monster's hit comes right behind it
+            var lem = SpawnAhead("BeetleGuardMaster", 2.5f, false);
+            if (!Check("spawned a Beetle Guard up close", lem != null)) yield break;
+            yield return new WaitForSecondsRealtime(2.5f);
+            yield return WaitVulnerable();
+            int parries0 = Parry.MeleeParries, hurts0 = V1HealthLink.HurtsSent, hp0 = V1Drive.UkHp;
+            float lemHp0 = lem.healthComponent.combinedHealth;
+            float t = Now;
+            for (int attempt = 0; attempt < 5 && Parry.MeleeParries == parries0; attempt++)
+            {
+                yield return AimAt(() => lem.corePosition);
+                int hits0 = Monsters.HitsApplied;
+                V1Drive.Script = () => new V1Drive.Frame { keys = new[] { KeyCode.F } };
+                t = Now;
+                while (Monsters.HitsApplied == hits0 && Now - t < 1.5f) yield return null;
+                V1Drive.Script = () => default;
+                if (Monsters.HitsApplied == hits0) continue;
+                // the punch has landed: the monster's swing arrives within the parry's reach in time
+                v1.healthComponent.TakeDamage(new DamageInfo { attacker = lem.gameObject, inflictor = lem.gameObject, damage = v1.healthComponent.fullHealth * 0.25f, position = v1.corePosition });
+                yield return new WaitForSecondsRealtime(0.6f);
+            }
+            yield return UkState();
+            metrics["melee_parry_returned"] = F(lemHp0 - (lem != null ? Mathf.Max(0f, lem.healthComponent.combinedHealth) : 0f));
+            Check("a punch meeting a melee hit is a parry", Parry.MeleeParries > parries0, "ULTRAKILL counts " + StateValue(stateReply, "parries") + " parries");
+            Check("the parried hit never reached V1", V1HealthLink.HurtsSent == hurts0 && V1Drive.UkHp >= hp0, "ULTRAKILL HP " + hp0 + " -> " + V1Drive.UkHp + ", " + (V1HealthLink.HurtsSent - hurts0) + " HURT sent (last " + F(V1HealthLink.LastHurt) + "), parries " + (Parry.MeleeParries - parries0) + ", hurt by: " + string.Join(", ", hurtBy.ToArray()));
+            Check("the monster took the return", lem == null || lemHp0 - lem.healthComponent.combinedHealth >= Parry.ParryUnits * unit * 0.9f, F(lemHp0 - (lem != null ? lem.healthComponent.combinedHealth : 0f)) + " of " + F(lemHp0));
+            yield return SnapRor("ror2-after-parry");
+
+            // 2. melee, not parried: it lands once the window has passed
+            if (lem == null || !lem.healthComponent.alive)
+            {
+                lem = SpawnAhead("BeetleGuardMaster", 2.5f, false);
+                yield return new WaitForSecondsRealtime(2.5f);
+            }
+            yield return new WaitForSecondsRealtime(1f);
+            yield return WaitVulnerable();
+            hurts0 = V1HealthLink.HurtsSent;
+            hp0 = V1Drive.UkHp;
+            v1.healthComponent.TakeDamage(new DamageInfo { attacker = lem.gameObject, inflictor = lem.gameObject, damage = v1.healthComponent.fullHealth * 0.2f, position = v1.corePosition });
+            Check("an unparried melee hit is held for the parry window", V1HealthLink.HurtsSent == hurts0);
+            t = Now;
+            while (V1Drive.UkHp == hp0 && Now - t < 2f) yield return null;
+            metrics["melee_hit_delay_seconds"] = F(Now - t);
+            Check("then lands", V1HealthLink.HurtsSent > hurts0 && V1Drive.UkHp < hp0, "ULTRAKILL HP " + hp0 + " -> " + V1Drive.UkHp + " after " + F(Now - t) + " s");
+            if (lem != null && lem.healthComponent.alive) lem.healthComponent.Suicide();
+
+            // 3. a projectile, caught
+            var owner = SpawnAhead("LemurianMaster", 16f, false);
+            if (!Check("spawned a Lemurian to own the fireball", owner != null)) yield break;
+            yield return new WaitForSecondsRealtime(2f);
+            var fireball = LegacyResourcesAPI.Load<GameObject>("Prefabs/Projectiles/Fireball");
+            if (!Check("fireball prefab found", fireball != null)) yield break;
+            int shot0 = Parry.ShotParries, listedMax = 0, ukShotsMax = 0;
+            float ownerHp0 = owner.healthComponent.combinedHealth;
+            for (int attempt = 0; attempt < 4 && Parry.ShotParries == shot0; attempt++)
+            {
+                yield return WaitVulnerable();
+                yield return AimAt(() => owner.corePosition);
+                Vector3 eye = V1Drive.ToRor(V1Drive.Latest.eye);
+                Vector3 from = eye + (owner.corePosition - eye).normalized * 12f;
+                hp0 = V1Drive.UkHp;
+                RoR2.Projectile.ProjectileManager.instance.FireProjectile(fireball, from, Quaternion.LookRotation(eye - from), owner.gameObject, 10f, 0f, false, DamageColorIndex.Default, null, 8f);
+                t = Now;
+                bool punched = false;
+                while (Now - t < 3f && Parry.ShotParries == shot0)
+                {
+                    listedMax = Mathf.Max(listedMax, Parry.ShotsListed);
+                    float nearest = 999f;
+                    foreach (var p in InstanceTracker.GetInstancesList<RoR2.Projectile.ProjectileController>()) if (p != null) nearest = Mathf.Min(nearest, Vector3.Distance(p.transform.position, eye));
+                    if (!punched && nearest < 3.5f)
+                    {
+                        punched = true;
+                        V1Drive.Script = () => new V1Drive.Frame { keys = new[] { KeyCode.F } };
+                    }
+                    if (!punched && nearest < 9f && ukShotsMax == 0)
+                    {
+                        yield return UkState();
+                        int.TryParse(StateValue(stateReply, "shots"), out ukShotsMax);
+                    }
+                    yield return null;
+                }
+                V1Drive.Script = () => default;
+                yield return new WaitForSecondsRealtime(1f);
+            }
+            metrics["projectiles_listed"] = listedMax.ToString();
+            Check("the fireball flew through ULTRAKILL too", listedMax >= 1 && ukShotsMax >= 1, listedMax + " listed, ULTRAKILL had " + ukShotsMax);
+            yield return UkState();
+            Check("V1's fist caught a fireball", Parry.ShotParries > shot0, "ULTRAKILL counts " + StateValue(stateReply, "parries") + " parries in all");
+            Check("its owner took the return", owner == null || ownerHp0 - owner.healthComponent.combinedHealth >= unit, F(ownerHp0 - (owner != null ? owner.healthComponent.combinedHealth : 0f)) + " of " + F(ownerHp0));
+            yield return SnapUk("uk");
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
             yield return BackToTitle();
         }
 

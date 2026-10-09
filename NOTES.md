@@ -11,7 +11,7 @@ Working log for the V1-in-RoR2 bridge. Design: [docs/DESIGN.md](docs/DESIGN.md).
 | 2 V1 in character select | done 2026-10-09 (`survivor` scenario passes) |
 | 3 ULTRAKILL's picture + input | done 2026-10-09 (`picture` scenario passes) |
 | 4 Stage geometry as collision | done 2026-10-10 (`geometry` scenario passes) |
-| 5 Monsters and damage | damage both ways done 2026-10-10 (`combat` scenario; user confirmed in game). Parry not done |
+| 5 Monsters and damage | damage both ways done 2026-10-10 (`combat` scenario; user confirmed in game). Parry implemented 2026-10-10 (`parry` scenario passes 2 of 4 runs; waiting on the user's hands-on test) |
 | 6–7 | not started |
 
 ## How to work on it
@@ -91,6 +91,14 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   mitigation, puts it back, and sends `HURT <share of full health x 100>`; ULTRAKILL's `GetHurt` decides (its hurt and
   dash invincibility apply). ULTRAKILL's HP (`HP hp dead`) is written onto the body every frame as the same share of
   full health; `dead` makes the body `Suicide()`. `HealthComponent.Heal` on V1 is forwarded as `HEAL`.
+- Parry (`Parry.cs` on both sides). Projectiles: hostile `ProjectileController`s within 80 m are listed every frame
+  (`PROJS`); UkBridge keeps a trigger sphere (radius 1.2 units) with a `ParryReceiver` (parryHeal) on layer 14 for each,
+  so the Feedbacker's own parry code catches them; `PARRY p id` destroys the RoR2 projectile and returns 5 damage units
+  to its owner (Stun1s). A projectile's hit on V1 is held 0.12 s so a catch that arrives just after impact still cancels it.
+  Melee: a hit whose inflictor is the attacking body within 7 m is held 0.2 s; a punch landing on that monster in the
+  window, or up to 0.25 s before the hit, cancels it, sends `PARRIED id` (ULTRAKILL plays its real parry) and returns
+  5 units. Unparried hits land when the window closes.
+- `tools\Play.ps1` starts RoR2 on the bridge profile for normal play.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
 
@@ -146,7 +154,8 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - Stage geometry is a snapshot taken when the run engages: moving platforms, doors and anything spawned later are not mirrored yet.
 - RoR2's character-only invisible walls (CollideWithCharacterHullOnly layer) are not mirrored: V1 can walk past map edges RoR2 survivors cannot.
 - Only golemplains has been tested; stages with unreadable collision meshes will exercise the GPU read-back path for the first time.
-- Parry is not implemented: RoR2 attacks and projectiles cannot be parried yet; every hit arrives as plain damage.
+- Parry windows (0.2 s melee, 0.12 s projectile, 5 units returned) are first guesses, untested by a human. Melee damage on V1 is delayed by the 0.2 s window.
+- The scripted fireball catch in the `parry` scenario fails about half the time (timing); the parried projectile is removed and its owner damaged, it is not flung back as an ULTRAKILL projectile.
 - The `combat` scenario is not deterministic: the scripted punch sometimes misses a Lemurian spawned 1.5 m away, and the
   "own attack" check can be confused by regeneration or invincibility frames. The mechanics behind both passed in other runs.
 - RoR2's passive regeneration is forwarded like any heal, so V1 slowly regenerates in ULTRAKILL (hard damage still caps it).

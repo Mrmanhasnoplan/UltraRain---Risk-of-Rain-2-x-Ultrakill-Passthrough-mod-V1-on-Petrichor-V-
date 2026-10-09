@@ -65,6 +65,7 @@ namespace V1Bridge.Ror
             I = this;
             UkLink.OnMessage += V1Drive.OnMessage;
             UkLink.OnMessage += Monsters.OnMessage;
+            UkLink.OnMessage += Parry.OnMessage;
             UkLink.Start(Plugin.Port.Value);
             string test = Plugin.Arg(TestMode.ArgName);
             if (test != null) gameObject.AddComponent<TestMode>().Begin(test, Plugin.Arg(TestMode.ArgOut));

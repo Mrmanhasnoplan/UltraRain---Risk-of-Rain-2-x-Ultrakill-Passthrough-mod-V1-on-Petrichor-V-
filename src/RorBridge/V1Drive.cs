@@ -140,6 +140,7 @@ namespace V1Bridge.Ror
             if (!UkLanded) return;
             SendInput(user);
             Monsters.Tick(b);
+            Parry.Tick(b);
             Frames.Update();
             ShowOverlay(user);
         }
@@ -161,6 +162,7 @@ namespace V1Bridge.Ror
             UkDead = false;
             UkLink.Send(Proto.Respawn);
             Monsters.Hook();
+            Parry.Reset();
             Stage = StageGeometry.Export(Origin, K, ++geoSerial % 2);
             StageLoaded = null;
             Plugin.Log.LogInfo("stage exported: " + Stage.objects + " colliders, " + Stage.triangles + " triangles (" + Stage.unreadable + " meshes read from the GPU, " + Stage.skipped

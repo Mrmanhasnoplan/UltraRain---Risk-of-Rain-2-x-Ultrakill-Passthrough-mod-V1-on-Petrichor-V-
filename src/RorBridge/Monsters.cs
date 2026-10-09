@@ -76,6 +76,13 @@ namespace V1Bridge.Ror
             var v1 = V1Drive.Body;
             var a = rest.Split(' ');
             if (v1 == null || a.Length < 8 || !byId.TryGetValue(int.Parse(a[0]), out var victim) || victim == null || victim.healthComponent == null || !victim.healthComponent.alive) return;
+            // a punch that meets this monster's own hit is a parry: Parry deals the return
+            if (a[4] == "punch" && Parry.Punched(int.Parse(a[0]), victim, v1))
+            {
+                HitsApplied++;
+                LastHit = "parry";
+                return;
+            }
             float mult = F(a[1]);
             bool explosion = a[3] == "1";
             var info = new DamageInfo
@@ -110,6 +117,7 @@ namespace V1Bridge.Ror
     {
         HealthComponent hc;
         float before;
+        DamageInfo incoming;
         public static int HurtsSent;
         public static float LastHurt;
 
@@ -121,6 +129,7 @@ namespace V1Bridge.Ror
         {
             if (!Linked) return;
             before = hc.health;
+            incoming = info;
             info.damageType |= DamageType.NonLethal;
         }
 
@@ -131,8 +140,15 @@ namespace V1Bridge.Ror
             if (lost <= 0f) return;
             hc.Networkhealth = before;
             LastHurt = lost / hc.fullHealth * 100f;
+            // a monster's swing waits a moment for V1's fist; everything else lands at once
+            if (incoming != null && Parry.Hold(incoming, hc.body, LastHurt)) return;
+            Send(LastHurt);
+        }
+
+        public static void Send(float share)
+        {
             HurtsSent++;
-            UkLink.Send(Proto.Hurt + " " + LastHurt.ToString("0.##", CultureInfo.InvariantCulture));
+            UkLink.Send(Proto.Hurt + " " + share.ToString("0.##", CultureInfo.InvariantCulture));
         }
     }
 

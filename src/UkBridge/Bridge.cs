@@ -82,6 +82,7 @@ namespace V1Bridge.Uk
                     // let go of everything, or V1 keeps running on the last keys held
                     ReleaseInput();
                     ClearProxies();
+                    ClearShots();
                     idle = true;
                     break;
                 case Proto.Size:
@@ -107,6 +108,12 @@ namespace V1Bridge.Uk
                 case Proto.Ents:
                     ApplyEntities(rest);
                     break;
+                case Proto.Projs:
+                    ApplyProjectiles(rest);
+                    break;
+                case Proto.Parried:
+                    MeleeParried(rest);
+                    break;
                 case Proto.Hurt:
                     Hurt(rest);
                     break;
@@ -124,7 +131,7 @@ namespace V1Bridge.Uk
                     break;
                 case Proto.Idle:
                     idle = rest.Trim() == "1";
-                    if (idle) { ReleaseInput(); ClearProxies(); }
+                    if (idle) { ReleaseInput(); ClearProxies(); ClearShots(); }
                     break;
                 case Proto.Hello:
                 {
@@ -152,7 +159,7 @@ namespace V1Bridge.Uk
 
         string StateLine()
         {
-            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " dmg=" + DamageReports + " res=" + Screen.width + "x" + Screen.height
+            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " dmg=" + DamageReports + " shots=" + shots.Count + " parries=" + Parries + " res=" + Screen.width + "x" + Screen.height
                    + " t=" + Time.unscaledTime.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " blocked=" + SaveGuard.Blocked
                    + " saves=" + GameProgressSaver.BaseSavePath.Replace(' ', '?');
         }
