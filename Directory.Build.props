@@ -1,0 +1,19 @@
+<Project>
+  <PropertyGroup>
+    <!-- Game installs: override with -p:UkDir=... -p:RorDir=... (tools\Build.ps1 finds them through Steam) -->
+    <UkDir Condition="'$(UkDir)' == ''">C:\Program Files (x86)\Steam\steamapps\common\ULTRAKILL</UkDir>
+    <RorDir Condition="'$(RorDir)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Risk of Rain 2</RorDir>
+    <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
+    <BuildRoot Condition="'$(BuildRoot)' == ''">$(RepoRoot)build</BuildRoot>
+    <ProfilesRoot Condition="'$(ProfilesRoot)' == ''">$(RepoRoot)profiles</ProfilesRoot>
+    <BaseIntermediateOutputPath>$(BuildRoot)\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <OutputPath>$(BuildRoot)\bin\$(MSBuildProjectName)\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Version>0.1.0</Version>
+    <DebugType>portable</DebugType>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+</Project>

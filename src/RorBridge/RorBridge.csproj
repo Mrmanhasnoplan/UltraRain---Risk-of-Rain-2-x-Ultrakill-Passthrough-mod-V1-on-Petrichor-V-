@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>RorBridge</AssemblyName>
+    <RootNamespace>V1Bridge.Ror</RootNamespace>
+    <Managed>$(RorDir)\Risk of Rain 2_Data\Managed</Managed>
+    <BepInExCore>$(ProfilesRoot)\ror2\BepInEx\core</BepInExCore>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\*.cs" LinkBase="Shared" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- compiled against the local install; nothing from the game is copied anywhere -->
+    <Reference Include="BepInEx"><HintPath>$(BepInExCore)\BepInEx.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(BepInExCore)\0Harmony.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="RoR2"><HintPath>$(Managed)\RoR2.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Zio"><HintPath>$(Managed)\Zio.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="HGCSharpUtils"><HintPath>$(Managed)\HGCSharpUtils.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(Managed)\UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(Managed)\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.ScreenCaptureModule"><HintPath>$(Managed)\UnityEngine.ScreenCaptureModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="com.unity.multiplayer-hlapi.Runtime"><HintPath>$(Managed)\com.unity.multiplayer-hlapi.Runtime.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <Target Name="Deploy" AfterTargets="Build">
+    <Copy SourceFiles="$(OutputPath)RorBridge.dll;$(OutputPath)RorBridge.pdb" DestinationFolder="$(ProfilesRoot)\ror2\BepInEx\plugins\RorBridge" />
+  </Target>
+</Project>

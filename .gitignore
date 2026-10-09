@@ -6,3 +6,6 @@ ref/
 test-output/
 *.user
 .vs/
+build/
+.tools/
+.decomp/
