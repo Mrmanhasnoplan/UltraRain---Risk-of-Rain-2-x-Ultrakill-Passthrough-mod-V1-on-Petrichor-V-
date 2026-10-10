@@ -118,6 +118,16 @@ namespace V1Bridge.Uk
                 case Proto.Parried:
                     MeleeParried(rest);
                     break;
+                case "TESTBLAST":
+                {
+                    // (tests) one of ULTRAKILL's own explosions that hurts nothing, as a rocket leaves when it lands by an enemy
+                    var a = rest.Split(' ');
+                    var drm = MonoSingleton<DefaultReferenceManager>.Instance;
+                    if (drm == null || drm.explosion == null) break;
+                    var go = Instantiate(drm.explosion, new Vector3(F(a[0]), F(a[1]), F(a[2])), Quaternion.identity);
+                    foreach (var ex in go.GetComponentsInChildren<Explosion>()) { ex.damage = 0; ex.enemyDamageMultiplier = 1f; ex.harmless = false; ex.canHit = AffectedSubjects.EnemiesOnly; }
+                    break;
+                }
                 case "TESTOIL":
                 {
                     // (tests) gasoline on that monster, as the Firestarter leaves it
@@ -214,7 +224,7 @@ namespace V1Bridge.Uk
 
         string StateLine()
         {
-            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " volumes=" + VolumeInfo + " audio=" + (levelPrepared ? AudioInfo() : "-") + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " dmg=" + DamageReports + " hook=" + HookInfo() + " pulled=" + PulledInfo() + " coins=" + (MonoSingleton<ObjectTracker>.Instance != null ? MonoSingleton<ObjectTracker>.Instance.zappablesList.Count : -1) + " nails=" + NailCount() + " conductions=" + Conductions + " pulls=" + Pulls + " shots=" + shots.Count + " parries=" + Parries + " res=" + Screen.width + "x" + Screen.height
+            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " volumes=" + VolumeInfo + " audio=" + (levelPrepared ? AudioInfo() : "-") + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " dmg=" + DamageReports + " hook=" + HookInfo() + " pulled=" + PulledInfo() + " coins=" + (MonoSingleton<ObjectTracker>.Instance != null ? MonoSingleton<ObjectTracker>.Instance.zappablesList.Count : -1) + " nails=" + NailCount() + " conductions=" + Conductions + " knocks=" + Knocks + " pulls=" + Pulls + " shots=" + shots.Count + " parries=" + Parries + " res=" + Screen.width + "x" + Screen.height
                    + " t=" + Time.unscaledTime.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " blocked=" + SaveGuard.Blocked
                    + " saves=" + GameProgressSaver.BaseSavePath.Replace(' ', '?');
         }

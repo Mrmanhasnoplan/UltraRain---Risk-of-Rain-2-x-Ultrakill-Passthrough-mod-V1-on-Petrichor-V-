@@ -82,6 +82,7 @@ namespace V1Bridge.Ror
                 case "model": body = ModelTest(); break;
                 case "oil": body = OilTest(); break;
                 case "audio": body = AudioTest(); break;
+                case "blast": body = BlastTest(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -1459,6 +1460,44 @@ namespace V1Bridge.Ror
             metrics["uk_audio_firing"] = firing;
             var p = System.Text.RegularExpressions.Regex.Match(firing, @"playing(\d+)");
             Check("firing plays sounds in ULTRAKILL", p.Success && int.Parse(p.Groups[1].Value) > 0, firing);
+            yield return BackToTitle();
+        }
+
+        /// <summary>A blast that hurts nothing still throws the monsters it reaches, light ones far and heavy ones less.</summary>
+        IEnumerator BlastTest()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            foreach (var kind in new[] { "LemurianMaster", "BeetleGuardMaster" })
+            {
+                var m = SpawnAhead(kind, 10f, false);
+                if (!Check("spawned " + kind, m != null)) yield break;
+                yield return new WaitForSecondsRealtime(2.5f);
+                Vector3 start = m.corePosition;
+                float hp0 = m.healthComponent.combinedHealth, top = start.y, far = 0f;
+                int knocks0 = Monsters.KnocksApplied;
+                // on the ground just this side of it
+                var at = V1Drive.ToUk(m.footPosition + (V1Drive.ToRor(V1Drive.Latest.feet) - m.footPosition).normalized * 1.5f);
+                UkLink.Send("TESTBLAST " + F(at.x) + " " + F(at.y) + " " + F(at.z));
+                float t = Now;
+                while (Now - t < 2.5f && m != null)
+                {
+                    top = Mathf.Max(top, m.corePosition.y);
+                    far = Mathf.Max(far, Vector3.Distance(new Vector3(m.corePosition.x, 0f, m.corePosition.z), new Vector3(start.x, 0f, start.z)));
+                    yield return null;
+                }
+                string what = kind.Replace("Master", "") + " (" + F(m.characterMotor != null ? m.characterMotor.mass : 0f) + " kg): up " + F(top - start.y) + " m, along " + F(far) + " m, health " + F(hp0) + " -> " + F(m.healthComponent.combinedHealth);
+                metrics["blast_" + kind] = what;
+                Check("the blast reached the " + kind.Replace("Master", ""), Monsters.KnocksApplied > knocks0, what);
+                Check("it was thrown", top - start.y > 0.5f || far > 1.5f, what);
+                Check("it was not hurt", m.healthComponent.combinedHealth >= hp0 - 0.5f, what);
+                m.healthComponent.Suicide();
+                yield return new WaitForSecondsRealtime(1f);
+            }
             yield return BackToTitle();
         }
 

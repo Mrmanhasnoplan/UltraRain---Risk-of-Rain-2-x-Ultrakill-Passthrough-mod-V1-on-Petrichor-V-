@@ -140,6 +140,22 @@ namespace V1Bridge.Ror
             }
         }
 
+        public static int KnocksApplied;
+        /// <summary>The push of a rocket's blast, as Risk of Rain 2 force: a 100 kg monster leaves at this many m/s; heavier
+        /// ones in proportion less (RoR2 divides force by mass), so a boss barely shifts.</summary>
+        public const float KnockSpeed = 16f;
+
+        /// <summary>KNOCK id dx dy dz strength: an ULTRAKILL blast reached that monster. Risk of Rain 2 throws it, with
+        /// its own physics: off the ground, no steering until it lands.</summary>
+        static void Knocked(string[] a)
+        {
+            if (a.Length < 5 || !byId.TryGetValue(int.Parse(a[0]), out var b) || b == null || b.healthComponent == null || !b.healthComponent.alive) return;
+            var dir = new Vector3(F(a[1]), F(a[2]), F(a[3]));
+            float strength = Mathf.Clamp(F(a[4]), 0.1f, 3f);
+            b.healthComponent.TakeDamageForce(dir * (KnockSpeed * 100f * strength), true, true);
+            KnocksApplied++;
+        }
+
         static readonly Dictionary<int, TemporaryOverlayInstance> oil = new Dictionary<int, TemporaryOverlayInstance>();
         public static int Oiled => oil.Count;
 
@@ -173,6 +189,7 @@ namespace V1Bridge.Ror
         public static void OnMessage(string cmd, string rest)
         {
             if (cmd == Proto.Oiled) { SetOiled(rest.Split(' ')); return; }
+            if (cmd == Proto.Knock) { Knocked(rest.Split(' ')); return; }
             if (cmd == Proto.Pull || cmd == Proto.PullEnd) { Pulled(rest.Split(' '), cmd == Proto.PullEnd); return; }
             if (cmd != Proto.Damage) return;
             var v1 = V1Drive.Body;

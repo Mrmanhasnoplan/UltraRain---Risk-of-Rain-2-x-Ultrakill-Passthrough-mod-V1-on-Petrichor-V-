@@ -153,6 +153,12 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   reads the three volumes from the real `Preferences\Prefs.json` (read only) every time the level is prepared, writes
   them to the sandbox prefs, sets `AudioListener.volume` and re-applies the SFX and music mixers. A real SFX or master
   volume of 0 is treated as 1 so the bridge is never mute.
+- Blast knockback: ULTRAKILL's explosions call `DeliverDamage` with a force (50000 x push multiplier, lifted off the
+  ground) even when the damage is 0, as a rocket landing beside an enemy does. The stand-in prefix now sends
+  `KNOCK id dir strength` for any explosion hit with a force (once per stand-in per 0.3 s: a blast touches every box and
+  is several explosions in one); RorBridge applies `HealthComponent.TakeDamageForce(dir x 1600 x strength, alwaysApply,
+  disableAirControl)`, i.e. 16 m/s for a 100 kg monster and less in proportion to mass. `TESTBLAST x y z` (tests) spawns
+  ULTRAKILL's stock explosion with damage 0.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -195,6 +201,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
 | 2026-10-10 | audio (golemplains) | PASS (1 run) | volumes all 0.52 / sfx 0.17 / music 0 (the real settings); SFX mixer at -15.4 dB, one listener, 3 sources playing idle and 4 while firing. Audibility itself cannot be checked by the test |
+| 2026-10-10 | blast (golemplains) | PASS (2 runs; the first, before de-duplicating, threw a Lemurian 37 m up) | zero-damage blast 1.5 m from a monster: Lemurian (100 kg) up 4.4 m; Beetle Guard (300 kg) up 0.8 m; neither hurt. The distances along the ground (33 m, 10 m) are inflated: test monsters have no acceleration, so they do not brake |
 | 2026-10-10 02:55 | oil (golemplains) | PASS (1 run) | `TESTOIL` on a Beetle Guard: overlay on 0.7 s later, monster visibly covered in dark goo in the screenshot |
 | 2026-10-10 02:50 | model | PASS (2 runs) | 9 parts, 6,441 vertices, 2 textures handed over 10.9 s after picking V1; display 2.05 m tall; second run showed the cached model 1.5 s after the pick, before ULTRAKILL was up |
 | 2026-10-10 02:42 | coins (golemplains) | PASS (1 run, after one failed run whose test coin was deleted for standing still) | two Beetle Guards 24 m apart (46 ULTRAKILL units, beyond the 30-unit reach): railcannon into 22 nails shocked only the first; with a coin midway the second took `zap` |
@@ -233,6 +240,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - The user's bridge config currently has DamageCoefficient = 1 and MouseScale = 2.1 (set through the in-game menu, so that menu works).
 - Water conduction was only tested with monsters flagged wet by the test, not standing in real stage water; whether RoR2's Water-layer colliders sit where the visible water is has not been checked on any stage. V1 standing in water while shocking it (ULTRAKILL shocks V1 too) is untested.
 - The oil overlay was tested with the test hook, not the Firestarter's spray; its removal when the fuel burns off or runs out, and whether burning itself shows and damages, are untested. Gasoline on the environment is not shown.
+- Blast knockback was tested with ULTRAKILL's stock explosion set to zero damage, not an actual rocket missing an enemy; the push strength (16 m/s per 100 kg) is a first guess and flying monsters are untested.
 - Coin conduction was tested with a coin spawned by the test hook, not one thrown by the Marksman; a thrown coin is the same prefab, but the throw itself was not scripted.
 - Magnets (Attractor nailgun) as conductors are implemented by the same code path but untested.
 - The `conduction` scenario's weapon switching is scripted with number keys and depends on which variant ULTRAKILL had out last; the Jumpstart step failed 1 run in 3.

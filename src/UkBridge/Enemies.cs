@@ -23,6 +23,7 @@ namespace V1Bridge.Uk
         public float lastSeen, w, h;
         /// <summary>The Whiplash pulls it to V1 (otherwise V1 to it), and it is being pulled right now.</summary>
         public bool light, pulled;
+        public float knockedAt = -10f;
         public Rigidbody rootRb;
         public readonly CancellationTokenSource life = new CancellationTokenSource();
         Vector3 cachedPos, cachedHead;
@@ -65,7 +66,8 @@ namespace V1Bridge.Uk
         readonly List<int> gone = new List<int>();
         GoreZone goreZone;
         float healCarry;
-        public int DamageReports, Pulls;
+        public int DamageReports, Pulls, Knocks;
+        internal static string Num(float f) => S(f);
 
         /// <summary>The Whiplash decides light or heavy from a list of ULTRAKILL's enemy types. Light stand-ins are
         /// Puppets, and Puppet joins that list.</summary>
@@ -462,12 +464,22 @@ namespace V1Bridge.Uk
     [HarmonyPatch(typeof(EnemyIdentifier), nameof(EnemyIdentifier.DeliverDamage))]
     static class ProxyDamage
     {
-        static bool Prefix(EnemyIdentifier __instance, GameObject target, Vector3 hitPoint, float multiplier, float critMultiplier, bool fromExplosion, GameObject sourceWeapon)
+        static bool Prefix(EnemyIdentifier __instance, GameObject target, Vector3 force, Vector3 hitPoint, float multiplier, float critMultiplier, bool fromExplosion, GameObject sourceWeapon)
         {
             var p = __instance.GetComponent<RorProxy>();
             if (p == null) return true;
             var b = Bridge.I;
             if (b == null) return false;
+            // a blast throws what it reaches, hurt or not (a rocket that lands beside an enemy only throws it):
+            // ULTRAKILL's explosions push with 50000 along the way out, lifted off the ground
+            // (once per blast: an explosion touches each of a stand-in's boxes, and is several explosions in one)
+            if (fromExplosion && force.sqrMagnitude > 1f && Time.time - p.knockedAt > 0.3f)
+            {
+                p.knockedAt = Time.time;
+                var dir = force.normalized;
+                Net.Send(Proto.Knock + " " + p.id + " " + Bridge.Num(dir.x) + " " + Bridge.Num(dir.y) + " " + Bridge.Num(dir.z) + " " + Bridge.Num(force.magnitude / 50000f));
+                b.Knocks++;
+            }
             bool head = target != null && target == p.head;
             float dmg = multiplier;
             if (head) dmg *= critMultiplier > 0f ? 1f + critMultiplier : 2f;
