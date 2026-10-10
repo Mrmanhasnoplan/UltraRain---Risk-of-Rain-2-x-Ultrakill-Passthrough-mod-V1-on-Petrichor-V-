@@ -84,6 +84,7 @@ namespace V1Bridge.Ror
                 case "audio": body = AudioTest(); break;
                 case "blast": body = BlastTest(); break;
                 case "jumppad": body = JumpPadTest(); break;
+                case "outofbounds": body = OutOfBoundsTest(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -1546,6 +1547,50 @@ namespace V1Bridge.Ror
             Check("V1 came down about as far along as the pad aims", Mathf.Abs(along - padAlong) < Mathf.Max(6f, padAlong * 0.35f), metrics["jump_result"]);
             yield return SnapRor("ror2-after-jump");
             Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
+            yield return BackToTitle();
+        }
+
+        /// <summary>V1 out of the stage's bounds is put back on the stage by Risk of Rain 2, like any survivor.</summary>
+        IEnumerator OutOfBoundsTest()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            MapZone zone = null;
+            int zones = 0;
+            foreach (var z in FindObjectsOfType<MapZone>())
+            {
+                if (z.zoneType != MapZone.ZoneType.OutOfBounds) continue;
+                zones++;
+                var c = z.GetComponent<Collider>();
+                if (c == null || !c.bounds.Contains(v1.corePosition)) continue;
+                if (z.triggerType == MapZone.TriggerType.TriggerExit && (zone == null || c.bounds.size.sqrMagnitude > zone.GetComponent<Collider>().bounds.size.sqrMagnitude)) zone = z;
+            }
+            metrics["out_of_bounds_zones"] = zones.ToString();
+            if (!Check("the stage has a play area V1 stands in", zone != null, zones + " out-of-bounds zones")) yield break;
+            var area = zone.GetComponent<Collider>().bounds;
+            int hp0 = V1Drive.UkHp, teleports0 = V1Drive.RorTeleports;
+            Vector3 start = V1Drive.ToRor(V1Drive.Latest.feet);
+            // straight down through the bottom of the play area
+            Vector3 outside = new Vector3(start.x, area.min.y - 25f, start.z);
+            V1Drive.Teleport(outside, 0f);
+            float t = Now;
+            while (V1Drive.RorTeleports == teleports0 && Now - t < 8f) yield return null;
+            metrics["seconds_until_put_back"] = F(Now - t);
+            if (!Check("Risk of Rain 2 put V1 back", V1Drive.RorTeleports > teleports0, "after " + F(Now - t) + " s")) yield break;
+            yield return new WaitForSecondsRealtime(3f);
+            Vector3 now = V1Drive.ToRor(V1Drive.Latest.feet);
+            bool ground = Physics.Raycast(now + Vector3.up * 2f, Vector3.down, out var hit, 30f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore);
+            metrics["put_back_at"] = now + ", " + (ground ? F(now.y - hit.point.y) + " m above the ground" : "no ground below") + ", " + V1Drive.RorTeleports + " teleports in all";
+            Check("V1 is inside the play area again", area.Contains(now + Vector3.up), metrics["put_back_at"]);
+            Check("V1 is standing on the stage", V1Drive.Latest.grounded && ground && Mathf.Abs(now.y - hit.point.y) < 0.5f, metrics["put_back_at"]);
+            Check("it happened once, not over and over", V1Drive.RorTeleports - teleports0 <= 2, (V1Drive.RorTeleports - teleports0) + " teleports");
+            Check("RoR2's body is with V1", Vector3.Distance(v1.footPosition, now) < 0.5f, F(Vector3.Distance(v1.footPosition, now)) + " m apart");
+            Check("V1 was not hurt and the run goes on", V1Drive.UkHp >= hp0 - 1 && Run.instance != null && !Run.instance.isGameOverServer && v1.healthComponent.alive, "ULTRAKILL HP " + hp0 + " -> " + V1Drive.UkHp);
+            yield return SnapRor("ror2-put-back");
             yield return BackToTitle();
         }
 

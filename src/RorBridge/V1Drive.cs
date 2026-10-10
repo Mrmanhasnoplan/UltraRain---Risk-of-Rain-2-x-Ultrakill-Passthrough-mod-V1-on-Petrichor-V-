@@ -260,6 +260,23 @@ namespace V1Bridge.Ror
             UkLink.Send(Proto.Size + " " + w + " " + h + " " + Plugin.UkFps.Value);
         }
 
+        public static int RorTeleports;
+        static Vector3 holdAt;
+        static float holdUntil = -1f;
+
+        /// <summary>Risk of Rain 2 teleported V1's body (fell out of bounds, a zone that puts players back, anything that
+        /// uses its teleport helper): V1 goes there in ULTRAKILL, standing still, facing as it was. Until ULTRAKILL's
+        /// V1 has arrived the body stays where RoR2 put it, or it would be dragged back out and teleported again.</summary>
+        public static void OnRorTeleport(CharacterBody b, Vector3 feet)
+        {
+            if (!engaged || b != body || !UkLanded) return;
+            RorTeleports++;
+            holdAt = feet;
+            holdUntil = Time.time + 1.5f;
+            Teleport(feet + Vector3.up * 0.2f, HavePose ? Latest.yaw : 0f, HavePose ? Latest.pitch : 0f);
+            Plugin.Log.LogInfo("Risk of Rain 2 teleported V1 to " + feet);
+        }
+
         /// <summary>Put V1 down somewhere in the stage (RoR2 coordinates), looking along yaw.</summary>
         public static void Teleport(Vector3 feet, float yaw, float pitch = 0f)
         {
@@ -359,6 +376,12 @@ namespace V1Bridge.Ror
         {
             if (!engaged || !UkLanded || !HavePose || body == null) return;
             var feet = ToRor(Latest.feet);
+            if (holdUntil > 0f)
+            {
+                // RoR2 has just put the body somewhere: wait for V1 to turn up there
+                if (Time.time < holdUntil && Vector3.Distance(feet, holdAt) > 4f) return;
+                holdUntil = -1f;
+            }
             // fell out of the stage: back to where the run put V1 down
             if (Stage.objects > 0 && feet.y < Stage.bounds.min.y - 30f && pendingTp == null)
             {
@@ -431,6 +454,17 @@ namespace V1Bridge.Ror
             Vector3 u = v * V1Drive.K;
             UkLink.Send(Proto.Launch + " " + u.x.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + " " + u.y.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
                         + " " + u.z.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + " " + (Physics.gravity.magnitude * V1Drive.K).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+        }
+    }
+
+    /// <summary>Whatever teleports V1's body in Risk of Rain 2 (out of bounds first of all) moves V1 in ULTRAKILL.</summary>
+    [HarmonyLib.HarmonyPatch(typeof(TeleportHelper), nameof(TeleportHelper.TeleportBody), new[] { typeof(TeleportHelper.TeleportBodyArgs) })]
+    static class RorTeleports
+    {
+        static void Postfix(TeleportHelper.TeleportBodyArgs bodyArgs)
+        {
+            var b = bodyArgs.body;
+            if (b != null) V1Drive.OnRorTeleport(b, bodyArgs.targetPosition);
         }
     }
 

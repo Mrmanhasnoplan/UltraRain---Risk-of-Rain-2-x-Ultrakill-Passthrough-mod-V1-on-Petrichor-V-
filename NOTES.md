@@ -166,6 +166,10 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   sqrt(ULTRAKILL gravity / RoR2 gravity) so the path, and so the landing spot, is the pad's.
 - The Sandbox's Spawner Arm (weapon slot 6) is never equipped: `SummonSandboxArm.Enable` is skipped. Its on-screen
   "Spawner Arm in slot 6" hint goes with it.
+- Out of bounds: a Harmony postfix on `TeleportHelper.TeleportBody(TeleportBodyArgs)` forwards any RoR2 teleport of
+  V1's body (the stage's OutOfBounds `MapZone` uses it, with `Run.FindSafeTeleportPosition`) as a `TP` to ULTRAKILL,
+  and the body is held where RoR2 put it until V1 is within 4 m of it or 1.5 s pass, so it is not dragged back out and
+  teleported again. The older "30 m below the stage's bounds → back to the start" fallback is still there.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -210,6 +214,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 | 2026-10-10 | audio (golemplains) | PASS (1 run) | volumes all 0.52 / sfx 0.17 / music 0 (the real settings); SFX mixer at -15.4 dB, one listener, 3 sources playing idle and 4 while firing. Audibility itself cannot be checked by the test |
 | 2026-10-10 | blast (golemplains) | PASS (2 runs; the first, before de-duplicating, threw a Lemurian 37 m up) | zero-damage blast 1.5 m from a monster: Lemurian (100 kg) up 4.4 m; Beetle Guard (300 kg) up 0.8 m; neither hurt. The distances along the ground (33 m, 10 m) are inflated: test monsters have no acceleration, so they do not brake |
 | 2026-10-10 | jumppad (wispgraveyard, a third stage) | PASS (1 run) | pad velocity (51.3, 42.2, -2.6), time 1.5 s: V1 rose 29.4 m (RoR2 apex 29.7 m) and came down 79.7 m along (pad aims 77.1 m), 1.9 s in the air; body alive, 0 exceptions |
+| 2026-10-10 | outofbounds (golemplains) | PASS (1 run) | V1 put 25 m below the play area: RoR2 teleported the body 0.05 s later, V1 followed, standing 2 cm above the ground inside the area; one teleport, HP 100 → 100, 0 exceptions |
 | 2026-10-10 02:55 | oil (golemplains) | PASS (1 run) | `TESTOIL` on a Beetle Guard: overlay on 0.7 s later, monster visibly covered in dark goo in the screenshot |
 | 2026-10-10 02:50 | model | PASS (2 runs) | 9 parts, 6,441 vertices, 2 textures handed over 10.9 s after picking V1; display 2.05 m tall; second run showed the cached model 1.5 s after the pick, before ULTRAKILL was up |
 | 2026-10-10 02:42 | coins (golemplains) | PASS (1 run, after one failed run whose test coin was deleted for standing still) | two Beetle Guards 24 m apart (46 ULTRAKILL units, beyond the 30-unit reach): railcannon into 22 nails shocked only the first; with a coin midway the second took `zap` |
@@ -261,7 +266,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - RoR2's chat lines and tutorial hints draw over ULTRAKILL's weapon panel (bottom left).
 - Key overlaps not resolved: RoR2's Equipment key (Q by default) is taken from ULTRAKILL (its "last weapon"), and its Interact key (E) from ULTRAKILL's "change variation"; RoR2 pings and sprint are not routed at all.
 - Not tested: revives (Dio's Best Friend), the teleporter boss fight to completion, the bazaar, void fields, Mithrix, and any stage other than golemplains and blackbeach.
-- RoR2 instant-kill effects cannot kill V1 (every hit is NonLethal on the RoR2 side); out-of-bounds zones do not move V1.
+- RoR2 instant-kill effects cannot kill V1 (every hit is NonLethal on the RoR2 side). Out of bounds was tested by dropping V1 below one stage's play area; walking off an edge and other zone types (kick-out zones, kill zones) are untested.
 - Mouse sensitivity mapping (Rewired counts → ULTRAKILL look) is untested by a human.
 - The colour/coverage join costs ~5 ms per frame on a worker thread at 720p; a candidate for optimisation in Phase 7.
 - RoR2 settings changed while on the bridge profile are saved to the sandbox, not to the real `Config\config.cfg`.
