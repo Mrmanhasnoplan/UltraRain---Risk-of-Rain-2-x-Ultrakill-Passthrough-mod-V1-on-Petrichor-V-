@@ -27,6 +27,8 @@ namespace V1Bridge.Ror
         string snapReply;
         string stateReply;
         string probeReply;
+        int exceptions;
+        readonly List<string> exceptionList = new List<string>();
 
         public void Begin(string name, string dir)
         {
@@ -34,6 +36,12 @@ namespace V1Bridge.Ror
             outDir = string.IsNullOrEmpty(dir) ? Path.Combine(Plugin.ProfileDir, "test-output") : dir;
             Directory.CreateDirectory(outDir);
             UkLink.OnMessage += OnMessage;
+            Application.logMessageReceived += (msg, stack, type) =>
+            {
+                if (type != LogType.Exception) return;
+                exceptions++;
+                if (exceptionList.Count < 6 && !exceptionList.Contains(msg)) exceptionList.Add(msg + " @ " + (stack ?? "").Split('\n')[0].Trim());
+            };
             Plugin.Log.LogInfo("test mode: scenario '" + scenario + "', output " + outDir);
             StartCoroutine(RunScenario());
         }
@@ -67,6 +75,7 @@ namespace V1Bridge.Ror
                 case "geometry": body = Geometry(); break;
                 case "combat": body = Combat(); break;
                 case "parry": body = ParryTest(); break;
+                case "runloop": body = RunLoop(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -96,6 +105,8 @@ namespace V1Bridge.Ror
                 yield return stack.Peek().Current;
             }
             metrics["seconds"] = F(Time.realtimeSinceStartup - started);
+            metrics["exceptions_logged"] = exceptions.ToString();
+            if (exceptionList.Count > 0) metrics["exceptions"] = string.Join(" | ", exceptionList.ToArray());
             Write();
             UkLauncher.Close();
             yield return new WaitForSecondsRealtime(0.5f);
@@ -935,6 +946,142 @@ namespace V1Bridge.Ror
             Check("its owner took the return", owner == null || ownerHp0 - owner.healthComponent.combinedHealth >= unit, F(ownerHp0 - (owner != null ? owner.healthComponent.combinedHealth : 0f)) + " of " + F(ownerHp0));
             yield return SnapUk("uk");
             Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
+            yield return BackToTitle();
+        }
+
+        // ------------------------------------------------------------ phase 6
+
+        IEnumerator Interact()
+        {
+            V1Drive.Script = () => new V1Drive.Frame { interact = true };
+            yield return new WaitForSecondsRealtime(0.25f);
+            V1Drive.Script = () => default;
+        }
+
+        /// <summary>Phase 6: the run still works as V1. RoR2's HUD makes room, items are picked up and count, chests and
+        /// the teleporter answer RoR2's interact key, the next stage is solid again with V1 as it was, V1's death ends
+        /// the run, and a new run starts V1 whole.</summary>
+        IEnumerator RunLoop()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var user = LocalUserManager.GetFirstLocalUser();
+            var v1 = user.cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+
+            // 1. RoR2's HUD makes room for ULTRAKILL's
+            var hud = user.cameraRigController != null ? user.cameraRigController.hud : null;
+            Check("RoR2's health bar and skill icons are hidden, its crosshair off", hud != null && hud.healthBar != null && !hud.healthBar.gameObject.activeSelf && v1.hideCrosshair);
+
+            // 2. an item dropped at V1's feet is picked up
+            var syringe = RoR2Content.Items.Syringe;
+            int had = v1.inventory.GetItemCount(syringe);
+            PickupDropletController.CreatePickupDroplet(PickupCatalog.FindPickupIndex(syringe.itemIndex), v1.corePosition + Vector3.up * 2.5f, Vector3.zero);
+            float t = Now;
+            while (v1.inventory.GetItemCount(syringe) == had && Now - t < 10f) yield return null;
+            metrics["pickup_seconds"] = F(Now - t);
+            Check("V1 picked up an item lying at its feet", v1.inventory.GetItemCount(syringe) == had + 1);
+
+            // 3. items count: more damage on the body is more damage from ULTRAKILL's weapons
+            float unit0 = Monsters.UnitDamage(v1);
+            v1.inventory.GiveItem(RoR2Content.Items.BoostDamage, 10);
+            yield return new WaitForSecondsRealtime(1f);
+            float unit1 = Monsters.UnitDamage(v1);
+            Check("a damage item raises what a shot does", unit1 > unit0 * 1.8f, F(unit0) + " -> " + F(unit1) + " per ULTRAKILL damage unit");
+
+            // 4. a chest, opened with RoR2's interact key
+            v1.master.GiveMoney(500);
+            var card = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<InteractableSpawnCard>("RoR2/Base/Chest1/iscChest1.asset").WaitForCompletion();
+            var feet = V1Drive.ToRor(V1Drive.Latest.feet);
+            var spot = feet + Quaternion.Euler(0f, V1Drive.Latest.yaw, 0f) * Vector3.forward * 2.5f;
+            if (Physics.Raycast(spot + Vector3.up * 20f, Vector3.down, out var ground, 60f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore)) spot = ground.point;
+            var chest = card != null ? DirectorCore.instance.TrySpawnObject(new DirectorSpawnRequest(card, new DirectorPlacementRule { placementMode = DirectorPlacementRule.PlacementMode.Direct, position = spot }, new Xoroshiro128Plus(1))) : null;
+            if (Check("spawned a chest in front of V1", chest != null))
+            {
+                yield return new WaitForSecondsRealtime(1f);
+                var buy = chest.GetComponent<PurchaseInteraction>();
+                uint money0 = v1.master.money;
+                for (int attempt = 0; attempt < 3 && buy.available; attempt++)
+                {
+                    yield return AimAt(() => chest.transform.position + Vector3.up * 0.6f);
+                    yield return Interact();
+                    yield return new WaitForSecondsRealtime(0.8f);
+                }
+                Check("the interact key opened the chest and paid for it", !buy.available && v1.master.money < money0, "money " + money0 + " -> " + v1.master.money);
+                yield return SnapRor("ror2-chest");
+            }
+
+            // 5. the teleporter
+            var tp = TeleporterInteraction.instance;
+            if (Check("the stage has a teleporter", tp != null))
+            {
+                Vector3 beside = tp.transform.position + new Vector3(2.2f, 1.5f, 0f);
+                V1Drive.Teleport(beside, 270f);
+                yield return new WaitForSecondsRealtime(2f);
+                for (int attempt = 0; attempt < 3 && tp.isIdle; attempt++)
+                {
+                    yield return AimAt(() => tp.transform.position + Vector3.up * 0.8f);
+                    yield return Interact();
+                    yield return new WaitForSecondsRealtime(1f);
+                }
+                Check("the interact key started the teleporter", !tp.isIdle, tp.activationState.ToString());
+                t = Now;
+                while (!tp.isCharging && Now - t < 8f) yield return null;
+                // it only charges while a player stands in its zone
+                yield return new WaitForSecondsRealtime(5f);
+                metrics["teleporter_charge_after_5s"] = F(tp.chargeFraction);
+                Check("the teleporter charges with V1 standing by it", tp.isCharging && tp.chargeFraction > 0.01f, tp.activationState + ", " + F(tp.chargeFraction * 100f) + " %");
+                yield return SnapRor("ror2-teleporter");
+            }
+
+            // 6. the next stage: solid again, V1 as it was
+            yield return WaitVulnerable();
+            UkLink.Send(Proto.Hurt + " 30");
+            yield return new WaitForSecondsRealtime(1f);
+            int hpBefore = V1Drive.UkHp;
+            string loadedBefore = V1Drive.StageLoaded;
+            Run.instance.AdvanceStage(SceneCatalog.GetSceneDefFromSceneName("blackbeach"));
+            t = Now;
+            while ((SceneManager.GetActiveScene().name != "blackbeach" || user.cachedBody == null || user.cachedBody == v1 || !V1Drive.UkLanded || V1Drive.StageLoaded == null || ReferenceEquals(V1Drive.StageLoaded, loadedBefore)) && Now - t < 90f) yield return null;
+            metrics["stage_change_seconds"] = F(Now - t);
+            if (!Check("V1 arrived on the next stage", SceneManager.GetActiveScene().name == "blackbeach" && user.cachedBody != null && user.cachedBody != v1 && V1Drive.UkLanded, SceneManager.GetActiveScene().name + ", stage " + (V1Drive.StageLoaded ?? "not loaded"))) yield break;
+            v1 = user.cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(3f);
+            metrics["stage2"] = V1Drive.Stage.objects + " colliders, " + V1Drive.Stage.triangles + " triangles, " + V1Drive.Stage.unreadable + " meshes read from the GPU, " + V1Drive.Stage.skipped + " skipped; ULTRAKILL: " + V1Drive.StageLoaded;
+            Check("the new stage's geometry is in ULTRAKILL", V1Drive.Stage.objects > 10 && V1Drive.StageLoaded != null && V1Drive.StageLoaded.EndsWith(" ok"), metrics["stage2"]);
+            Check("V1 is standing on the new stage", V1Drive.Latest.grounded);
+            yield return StandingCheck("on the new stage");
+            Check("V1 kept its health across the stage change", Mathf.Abs(V1Drive.UkHp - hpBefore) <= 12 && V1Drive.UkHp < 100, "ULTRAKILL HP " + hpBefore + " -> " + V1Drive.UkHp);
+            Check("items came along", v1.inventory.GetItemCount(syringe) == had + 1);
+            yield return SnapRor("ror2-stage2");
+
+            // 7. V1 dies in ULTRAKILL: the run ends in Risk of Rain 2
+            yield return WaitVulnerable();
+            int exceptionsBefore = exceptions;
+            UkLink.Send(Proto.Hurt + " 999");
+            t = Now;
+            while ((!V1Drive.UkDead || Run.instance == null || !Run.instance.isGameOverServer) && Now - t < 15f) yield return null;
+            Check("V1's death in ULTRAKILL ended the run", V1Drive.UkDead && Run.instance != null && Run.instance.isGameOverServer, "ULTRAKILL dead " + V1Drive.UkDead + ", after " + F(Now - t) + " s");
+            yield return new WaitForSecondsRealtime(4f);
+            yield return SnapRor("ror2-game-over");
+            Check("the game-over screen came up without errors", exceptions == exceptionsBefore, (exceptions - exceptionsBefore) + " exceptions: " + string.Join(" | ", exceptionList.ToArray()));
+
+            // 8. a new run: V1 whole again
+            yield return BackToTitle();
+            yield return ToLobby();
+            yield return Pick(V1Survivor.Def);
+            yield return StartRun();
+            if (failed) yield break;
+            t = Now;
+            while ((!V1Drive.UkLanded || V1Drive.UkDead || !V1Drive.HavePose) && Now - t < 30f) yield return null;
+            yield return new WaitForSecondsRealtime(3f);
+            Check("a new run starts V1 alive at full health", V1Drive.UkLanded && !V1Drive.UkDead && V1Drive.UkHp == 100, "ULTRAKILL HP " + V1Drive.UkHp + ", dead " + V1Drive.UkDead);
+            Check("and standing on the stage", V1Drive.Latest.grounded);
+            yield return SnapRor("ror2-new-run");
+            yield return SnapUk("uk");
             yield return BackToTitle();
         }
 

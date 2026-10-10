@@ -123,7 +123,7 @@ namespace V1Bridge.Ror
 
         void Awake() => hc = GetComponent<HealthComponent>();
 
-        bool Linked => V1Drive.Linked(hc);
+        bool Linked => V1Drive.Linked(hc) && !V1Drive.Dying;
 
         public void OnIncomingDamageServer(DamageInfo info)
         {

@@ -79,6 +79,11 @@ namespace V1Bridge.Ror
             UkLauncher.Tick();
         }
 
+        void FixedUpdate()
+        {
+            V1Drive.FixedTick();
+        }
+
         void LateUpdate()
         {
             V1Drive.LateTick();

@@ -141,6 +141,8 @@ namespace V1Bridge.Uk
             nm.rb.isKinematic = false;
             nm.rb.velocity = Vector3.zero;
             if (!v1Landed) LandV1(nm);
+            // said again for every placement: after a stage change Risk of Rain 2 waits to hear V1 is down
+            else Net.Send(Proto.Landed + " again");
             var cc = MonoSingleton<CameraController>.Instance;
             if (cc != null && a.Length >= 5)
             {

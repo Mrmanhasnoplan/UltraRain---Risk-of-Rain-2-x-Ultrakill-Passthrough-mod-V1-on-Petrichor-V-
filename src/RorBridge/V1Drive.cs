@@ -55,7 +55,11 @@ namespace V1Bridge.Ror
         public static CharacterBody Body => engaged && UkLanded ? body : null;
         /// <summary>This health component is V1's and ULTRAKILL's HP is its truth right now.</summary>
         public static bool Linked(HealthComponent hc) => engaged && UkLanded && body != null && hc != null && hc == body.healthComponent;
-        static bool deathSent;
+        static bool deathSent, releasedSent;
+        static Run lastRun;
+        static readonly List<GameObject> hiddenHud = new List<GameObject>();
+        /// <summary>True while the body is being killed because V1 died in ULTRAKILL: that one hit may be lethal.</summary>
+        public static bool Dying;
 
         public static Vector3 ToRor(Vector3 uk) => Origin + uk / K;
         public static Vector3 ToUk(Vector3 ror) => (ror - Origin) * K;
@@ -88,7 +92,7 @@ namespace V1Bridge.Ror
                     break;
                 case Proto.Landed:
                     UkLanded = true;
-                    LandedInfo = rest;
+                    if (rest != "again") LandedInfo = rest;
                     Plugin.Log.LogInfo("V1 landed in ULTRAKILL: " + rest);
                     break;
                 case Proto.Hp:
@@ -131,7 +135,17 @@ namespace V1Bridge.Ror
             }
             var user = LocalUserManager.GetFirstLocalUser();
             var b = user != null ? user.cachedBody : null;
-            if (b == null) return;
+            if (b == null)
+            {
+                // between stages, or dead: V1 lets go of everything
+                if (!releasedSent && UkLanded)
+                {
+                    UkLink.Send(Proto.Input + " " + (++inputSeq) + " " + Frames.NowMicros() + " 0 0 0 0");
+                    releasedSent = true;
+                }
+                return;
+            }
+            releasedSent = false;
             if (!engaged || b != body)
             {
                 if (!UkReady) return;
@@ -158,9 +172,15 @@ namespace V1Bridge.Ror
             UkLink.Send(Proto.Size + " " + w + " " + h + " " + Plugin.UkFps.Value);
             float yaw = b.inputBank != null ? Quaternion.LookRotation(b.inputBank.aimDirection).eulerAngles.y : 0f;
             deathSent = false;
-            UkHp = 100;
-            UkDead = false;
-            UkLink.Send(Proto.Respawn);
+            if (UkDead || Run.instance != lastRun)
+            {
+                // a new run, or back from the dead (a revive): V1 whole again. A new stage keeps V1 as it was.
+                lastRun = Run.instance;
+                UkHp = 100;
+                UkDead = false;
+                UkLink.Send(Proto.Respawn);
+            }
+            b.hideCrosshair = true;
             Monsters.Hook();
             Parry.Reset();
             Stage = StageGeometry.Export(Origin, K, ++geoSerial % 2);
@@ -196,6 +216,8 @@ namespace V1Bridge.Ror
             quiet = null;
             foreach (var c in disabled) if (c != null) c.enabled = true;
             disabled.Clear();
+            foreach (var go in hiddenHud) if (go != null) go.SetActive(true);
+            hiddenHud.Clear();
             if (hiddenModel != null) hiddenModel.invisibilityCount--;
             hiddenModel = null;
             if (rig != null && rig.hasOverride) rig.SetOverrideCam(null, 0f);
@@ -216,8 +238,27 @@ namespace V1Bridge.Ror
             public float dx, dy, wheel;
             public int buttons;
             public KeyCode[] keys;
+            /// <summary>Risk of Rain 2's own actions, which stay RoR2's: their keys are not passed to ULTRAKILL.</summary>
+            public bool interact, equipment;
         }
         public static int InputsSent;
+        static bool interactHeld, equipmentHeld;
+
+        /// <summary>Physics step: interact and equipment reach the body the way RoR2's own controller would press them.</summary>
+        public static void FixedTick()
+        {
+            if (!engaged || !UkLanded || body == null || body.inputBank == null) return;
+            body.inputBank.interact.PushState(interactHeld);
+            body.inputBank.activateEquipment.PushState(equipmentHeld);
+            interactHeld = equipmentHeld = false;
+        }
+
+        /// <summary>Put V1 down somewhere in the stage (RoR2 coordinates), looking along yaw.</summary>
+        public static void Teleport(Vector3 feet, float yaw, float pitch = 0f)
+        {
+            var u = ToUk(feet);
+            UkLink.Send(Proto.Tp + " " + S(u.x) + " " + S(u.y) + " " + S(u.z) + " " + S(yaw) + " " + S(pitch));
+        }
         static readonly StringBuilder sb = new StringBuilder(128);
 
         static void SendInput(LocalUser user)
@@ -225,7 +266,10 @@ namespace V1Bridge.Ror
             Frame f;
             if (Script != null) f = Script();
             else if (PauseManager.isPaused || Cursor.lockState != CursorLockMode.Locked || !Application.isFocused) f = default;
-            else f = InputCapture.Read();
+            else f = InputCapture.Read(user);
+            // latched until the next physics step, where RoR2 reads its buttons
+            interactHeld |= f.interact;
+            equipmentHeld |= f.equipment;
             sb.Length = 0;
             sb.Append(Proto.Input).Append(' ').Append(++inputSeq).Append(' ').Append(Frames.NowMicros()).Append(' ')
               .Append(S(f.dx)).Append(' ').Append(S(f.dy)).Append(' ').Append(S(f.wheel)).Append(' ').Append(f.buttons);
@@ -269,6 +313,13 @@ namespace V1Bridge.Ror
                 rt.offsetMin = rt.offsetMax = Vector2.zero;
                 overlay = go.AddComponent<RawImage>();
                 overlay.raycastTarget = false;
+            }
+            if (hiddenHud.Count == 0 && rig.hud != null)
+            {
+                // ULTRAKILL's HUD shows V1's health and weapons; RoR2's bar and skill icons would sit on top of it
+                void Hide(Component c) { if (c != null && c.gameObject.activeSelf) { c.gameObject.SetActive(false); hiddenHud.Add(c.gameObject); } }
+                Hide(rig.hud.healthBar);
+                if (rig.hud.skillIcons != null) foreach (var s in rig.hud.skillIcons) Hide(s);
             }
             if (overlay != null)
             {
@@ -317,7 +368,9 @@ namespace V1Bridge.Ror
                     {
                         deathSent = true;
                         Plugin.Log.LogInfo("V1 died in ULTRAKILL: the body dies in Risk of Rain 2");
-                        hc.Suicide();
+                        Dying = true;
+                        try { hc.Suicide(); }
+                        finally { Dying = false; }
                     }
                 }
                 else hc.Networkhealth = Mathf.Max(1f, Mathf.Clamp01(UkHp / 100f) * hc.fullHealth);
@@ -359,7 +412,11 @@ namespace V1Bridge.Ror
     {
         static readonly List<KeyCode> keys = new List<KeyCode>(16);
 
-        public static V1Drive.Frame Read()
+        static readonly HashSet<KeyCode> kept = new HashSet<KeyCode>();
+        static float keptAt = -10f;
+        static readonly int[] RorActions = { RewiredConsts.Action.Interact, RewiredConsts.Action.Equipment };
+
+        public static V1Drive.Frame Read(LocalUser user)
         {
             var f = new V1Drive.Frame();
             var c = Rewired.ReInput.controllers;
@@ -372,6 +429,22 @@ namespace V1Bridge.Ror
                 // left, right, middle, then the two side buttons (the Input System's order: forward, back)
                 for (int i = 0; i < 5; i++) if (m.GetButton(i)) f.buttons |= 1 << i;
             }
+            var player = user != null ? user.inputPlayer : null;
+            if (player != null)
+            {
+                f.interact = player.GetButton(RewiredConsts.Action.Interact);
+                f.equipment = player.GetButton(RewiredConsts.Action.Equipment);
+                // the keys those are bound to are RoR2's alone (looked up now and then: binds can change in the menu)
+                if (Time.unscaledTime - keptAt > 2f)
+                {
+                    keptAt = Time.unscaledTime;
+                    kept.Clear();
+                    foreach (int action in RorActions)
+                    {
+                        foreach (var map in player.controllers.maps.ElementMapsWithAction(Rewired.ControllerType.Keyboard, action, true)) if (map.keyCode != KeyCode.None) kept.Add(map.keyCode);
+                    }
+                }
+            }
             keys.Clear();
             var kb = c.Keyboard;
             if (kb != null)
@@ -379,7 +452,7 @@ namespace V1Bridge.Ror
                 foreach (var p in kb.PollForAllKeys())
                 {
                     // Escape stays Risk of Rain 2's (its pause menu)
-                    if (p.keyboardKey != KeyCode.None && p.keyboardKey != KeyCode.Escape) keys.Add(p.keyboardKey);
+                    if (p.keyboardKey != KeyCode.None && p.keyboardKey != KeyCode.Escape && !kept.Contains(p.keyboardKey)) keys.Add(p.keyboardKey);
                 }
             }
             f.keys = keys.ToArray();
