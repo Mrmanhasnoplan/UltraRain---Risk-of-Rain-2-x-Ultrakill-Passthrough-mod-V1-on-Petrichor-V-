@@ -167,9 +167,7 @@ namespace V1Bridge.Ror
             body = b;
             engaged = true;
             Origin = b.footPosition;
-            int h = Mathf.Clamp(Plugin.UkHeight.Value, 360, 1440);
-            int w = Mathf.RoundToInt(h * (Screen.width / (float)Screen.height) / 2f) * 2;
-            UkLink.Send(Proto.Size + " " + w + " " + h + " " + Plugin.UkFps.Value);
+            SendSize();
             float yaw = b.inputBank != null ? Quaternion.LookRotation(b.inputBank.aimDirection).eulerAngles.y : 0f;
             deathSent = false;
             if (UkDead || Run.instance != lastRun)
@@ -207,7 +205,7 @@ namespace V1Bridge.Ror
             }
             Frames.FrameAge.Clear();
             Frames.InputAge.Clear();
-            Plugin.Log.LogInfo("engaged: origin " + Origin + ", ULTRAKILL at " + w + "x" + h);
+            Plugin.Log.LogInfo("engaged: origin " + Origin);
         }
 
         static void Disengage()
@@ -253,6 +251,15 @@ namespace V1Bridge.Ror
             interactHeld = equipmentHeld = false;
         }
 
+        /// <summary>What ULTRAKILL renders at: the configured height, this window's shape, the configured frame cap.</summary>
+        public static void SendSize()
+        {
+            if (!UkLink.Ready) return;
+            int h = Mathf.Clamp(Plugin.UkHeight.Value, 360, 1440);
+            int w = Mathf.RoundToInt(h * (Screen.width / (float)Screen.height) / 2f) * 2;
+            UkLink.Send(Proto.Size + " " + w + " " + h + " " + Plugin.UkFps.Value);
+        }
+
         /// <summary>Put V1 down somewhere in the stage (RoR2 coordinates), looking along yaw.</summary>
         public static void Teleport(Vector3 feet, float yaw, float pitch = 0f)
         {
@@ -266,7 +273,12 @@ namespace V1Bridge.Ror
             Frame f;
             if (Script != null) f = Script();
             else if (PauseManager.isPaused || Cursor.lockState != CursorLockMode.Locked || !Application.isFocused) f = default;
-            else f = InputCapture.Read(user);
+            else
+            {
+                f = InputCapture.Read(user);
+                f.dx *= Plugin.MouseScale.Value;
+                f.dy *= Plugin.MouseScale.Value;
+            }
             // latched until the next physics step, where RoR2 reads its buttons
             interactHeld |= f.interact;
             equipmentHeld |= f.equipment;
@@ -314,7 +326,7 @@ namespace V1Bridge.Ror
                 overlay = go.AddComponent<RawImage>();
                 overlay.raycastTarget = false;
             }
-            if (hiddenHud.Count == 0 && rig.hud != null)
+            if (hiddenHud.Count == 0 && rig.hud != null && Plugin.HideRorHud.Value)
             {
                 // ULTRAKILL's HUD shows V1's health and weapons; RoR2's bar and skill icons would sit on top of it
                 void Hide(Component c) { if (c != null && c.gameObject.activeSelf) { c.gameObject.SetActive(false); hiddenHud.Add(c.gameObject); } }

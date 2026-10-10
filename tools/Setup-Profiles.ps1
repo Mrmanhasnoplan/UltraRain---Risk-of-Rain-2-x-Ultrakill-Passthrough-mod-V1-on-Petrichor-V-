@@ -14,7 +14,7 @@ New-Item -ItemType Directory -Force $dl, $ror, $uk | Out-Null
 $thunderstore = @(
     'bbepis/BepInExPack', 'RiskofThunder/RoR2BepInExPack', 'RiskofThunder/FixPluginTypesSerialization',
     'RiskofThunder/HookGenPatcher', 'RiskofThunder/R2API_Core', 'RiskofThunder/R2API_ContentManagement',
-    'RiskofThunder/R2API_Prefab', 'RiskofThunder/R2API_Language'
+    'RiskofThunder/R2API_Prefab', 'RiskofThunder/R2API_Language', 'Rune580/Risk_Of_Options'
 )
 
 function Expand-Entries([string]$zip, [string]$dest, [scriptblock]$map) {

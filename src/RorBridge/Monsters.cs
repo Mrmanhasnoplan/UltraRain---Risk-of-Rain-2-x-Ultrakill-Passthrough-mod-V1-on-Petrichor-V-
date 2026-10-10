@@ -139,7 +139,7 @@ namespace V1Bridge.Ror
             float lost = before - hc.health;
             if (lost <= 0f) return;
             hc.Networkhealth = before;
-            LastHurt = lost / hc.fullHealth * 100f;
+            LastHurt = lost / hc.fullHealth * 100f * Plugin.IncomingDamage.Value;
             // a monster's swing waits a moment for V1's fist; everything else lands at once
             if (incoming != null && Parry.Hold(incoming, hc.body, LastHurt)) return;
             Send(LastHurt);

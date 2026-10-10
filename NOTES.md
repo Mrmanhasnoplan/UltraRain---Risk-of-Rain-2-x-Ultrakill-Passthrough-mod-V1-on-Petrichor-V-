@@ -13,7 +13,7 @@ Working log for the V1-in-RoR2 bridge. Design: [docs/DESIGN.md](docs/DESIGN.md).
 | 4 Stage geometry as collision | done 2026-10-10 (`geometry` scenario passes) |
 | 5 Monsters and damage | damage both ways done 2026-10-10 (`combat` scenario; user confirmed in game). Parry implemented 2026-10-10 (`parry` scenario passes 2 of 4 runs; user played it and confirmed it works) |
 | 6 Run loop | done 2026-10-10 (`runloop` scenario passes 45/45) |
-| 7 Settings, performance, install, README | next |
+| 7 Settings, performance, install, README | written 2026-10-10; the settings screen and `Install.ps1` have not been exercised by hand (see known issues) |
 
 ## How to work on it
 
@@ -110,6 +110,10 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
     only sent for a new run or after a death. With no body (loading, dead) one empty `IN` releases every key.
   - Death: ULTRAKILL's `dead` makes the body `Suicide()` with the NonLethal guard lifted (`V1Drive.Dying`); RoR2 then
     ends the run or revives as usual. Nothing in RoR2 can kill the body by itself.
+- Phase 7: settings are BepInEx config entries shown through Risk of Options (soft dependency, added to the profile):
+  UltrakillHeight, UltrakillFpsCap (both re-sent live as `SIZE`), MouseScale, DamageCoefficient, IncomingDamage,
+  HideRoR2HealthAndSkills. `tools\Install.ps1` chains SDK check → Setup-Profiles → Install-UkDoorstop → Build;
+  `tools\Play.ps1` launches. README.md is the user guide.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
 
@@ -146,6 +150,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-10 01:1x | runloop, with Risk of Options and the Phase 7 options | PASS (45/45, 0 real files changed, 0 exceptions) | RiskOfOptions 2.8.6 loads on the current RoR2 build |
 | 2026-10-10 00:59 | runloop (golemplains → blackbeach) | PASS (45/45, 0 real files changed, 0 exceptions logged) | item droplet picked up; BoostDamage x10 took the damage unit 36→72; chest opened with interact (515→490 gold); teleporter started and reached 5% in 5 s; stage change re-engaged in 1.3 s (215 colliders, 144,085 triangles), HP 70→73 kept; HURT 999 ended the run 2 s later; new run started at 100 HP |
 | 2026-10-10 00:3x | parry (golemplains) | PASS 28/28 on 2 of 4 runs; the others missed the scripted fireball catch | melee parry returned 180 damage (5 units) and cost V1 nothing; unparried melee landed after 0.22 s; fireball caught and its owner killed |
 | 2026-10-10 00:2x | combat (golemplains) | PASS 31/31 on 2 of the last 4 runs; the other 2 failed one or two timing-dependent checks (see known issues) | revolver x1.25 = 45 damage at level 1 (unit 36), Lemurian dead in 2 shots, gold 15→27 and experience 0→20 from the kill; punch x1 = 43.2; a 30% hit cost 30 HP; healing 10% gave 10 HP; a Lemurian's own attack arrived as HURT 8–17 |
@@ -174,6 +179,11 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - RoR2's passive regeneration is forwarded like any heal, so V1 slowly regenerates in ULTRAKILL (hard damage still caps it).
 - A monster's stand-in is one box from its movement capsule (x1.15), not its real hurt boxes; big or oddly shaped bosses will be off.
 - Overheal (ULTRAKILL HP above 100) is not shown on the RoR2 body.
+- Phase 7 is unverified beyond "it loads and the regression passes": nobody has opened the Mod Options screen to see the
+  sliders, changed a setting mid-run, or run `tools\Install.ps1` end to end on a clean checkout (its parts were run separately).
+- No performance options beyond ULTRAKILL's resolution and frame cap (no low-end preset, no lock-step, no D3D11 shared texture);
+  the colour/coverage join still costs ~5 ms a frame on a worker thread.
+- Character select still shows the primitive placeholder; V1's own model from the local install is not attempted yet.
 - RoR2's chat lines and tutorial hints draw over ULTRAKILL's weapon panel (bottom left).
 - Key overlaps not resolved: RoR2's Equipment key (Q by default) is taken from ULTRAKILL (its "last weapon"), and its Interact key (E) from ULTRAKILL's "change variation"; RoR2 pings and sprint are not routed at all.
 - Not tested: revives (Dio's Best Friend), the teleporter boss fight to completion, the bazaar, void fields, Mithrix, and any stage other than golemplains and blackbeach.
