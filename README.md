@@ -1,11 +1,20 @@
-# V1 Bridge
+# UltraRain: V1 on Petrichor V
 
-Play Risk of Rain 2 as V1 with the real ULTRAKILL: its movement, weapons, arms, HUD, style meter and sounds, running
-beside Risk of Rain 2 and drawn into its window. The RoR2 stage is ULTRAKILL's level and RoR2's monsters are its
-targets. Nothing of ULTRAKILL is reimplemented.
+A passthrough mod for Risk of Rain 2 and ULTRAKILL, allowing you to play as V1 on Petrichor V. All weapons are in the
+game and work, along with conduction and the Whiplash. Items also affect V1, although some items such as Soldier's
+Syringe don't. This mod will receive further updates like multiplayer in future.
+
+It runs the real ULTRAKILL beside Risk of Rain 2 and draws it into RoR2's window: ULTRAKILL's own movement, weapons,
+arms, HUD, style meter and sounds. The RoR2 stage is ULTRAKILL's level and RoR2's monsters are its targets. Nothing of
+ULTRAKILL is reimplemented. (In the code and scripts the project is called "V1 Bridge".)
+
+> **Early build.** It has only been run on one PC, on two stages, with the game versions of October 2026. Setup is a
+> PowerShell script that builds the mod against your own games. Known gaps: big bosses have rough hit boxes, moving
+> platforms and map-edge walls are not solid for V1, and gasoline on the ground is not drawn. The full list is in
+> [NOTES.md](NOTES.md).
 
 The idea and several techniques come from [Ultracraft](https://github.com/alfr0762/ultracraft) (MIT), which does the
-same for Minecraft.
+same for Minecraft. Licence: MIT ([LICENSE](LICENSE), [third-party notices](THIRD-PARTY-NOTICES.md)).
 
 You need to own **ULTRAKILL** and **Risk of Rain 2** on Steam. Windows only. Singleplayer only.
 No game files are in this repository; both plugins are compiled against your own installs.
