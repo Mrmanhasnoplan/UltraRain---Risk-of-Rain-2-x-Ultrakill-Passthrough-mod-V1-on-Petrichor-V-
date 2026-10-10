@@ -152,8 +152,8 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
 
 - Publishing prep (2026-10-10): MIT licence (`LICENSE`), Ultracraft's notice in `THIRD-PARTY-NOTICES.md`. Every commit
-  was rewritten to the placeholder author `V1 Bridge <noreply@v1bridge.invalid>` (repo-local git config uses it too);
-  to be replaced by the owner's GitHub no-reply address once the GitHub username is known. No remote yet.
+  is authored with the owner's GitHub no-reply address (repo-local git config uses it too). Published to
+  github.com/Mrmanhasnoplan/UltraRain---Risk-of-Rain-2-x-Ultrakill-Passthrough-mod-V1-on-Petrichor-V- (branch main).
 
 ## Findings
 
