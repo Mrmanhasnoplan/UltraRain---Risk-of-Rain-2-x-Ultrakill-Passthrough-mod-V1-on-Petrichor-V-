@@ -131,6 +131,9 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   every hit. Water: RoR2 has no water volumes ULTRAKILL can use, so `ENTS` carries a wet flag per monster (a collider
   on RoR2's Water layer at ankle height) and `WET` says the same for V1; UkBridge keeps one never-activated `Water`
   component that wet stand-ins hold in `touchingWaters` and whose `isPlayerTouchingWater` is V1's flag.
+- Coins conduct with no extra code: ULTRAKILL's `EnemyIdentifier.Zap` relays through every `Zappable` (coins) within
+  30 units in line of sight, and the stand-ins use that same `Zap`. `TESTCOIN x y z` (tests only) spawns one of the
+  revolver's own coins drifting upward at a point (a coin slower than 1 unit/s is deleted by ULTRAKILL).
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -168,6 +171,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-10 02:42 | coins (golemplains) | PASS (1 run, after one failed run whose test coin was deleted for standing still) | two Beetle Guards 24 m apart (46 ULTRAKILL units, beyond the 30-unit reach): railcannon into 22 nails shocked only the first; with a coin midway the second took `zap` |
 | 2026-10-10 02:2x | conduction (golemplains) | every check passed in at least one of 3 runs, never all in the same run | Jumpstart cable: `zapper` on the first Beetle Guard, `zap` on the second (2 of 3 runs; the third never got the cable on). Electric railcannon into 212 stuck nails: `zap` on the second. Water (monsters forced wet, no nails): `zap` on the second. golemplains has 2 Water-layer colliders |
 | 2026-10-10 01:3x | whiplash (golemplains) | PASS (1 run) | Lemurian (100 kg, light) dragged 14.2 m → 0.27 m from V1 with V1 not moving; Beetle Guard (300 kg, heavy) stayed put and V1 flew 16.1 m → 1.9 m; hook hit x0.2 arrived |
 | 2026-10-10 01:1x | runloop, with Risk of Options and the Phase 7 options | PASS (45/45, 0 real files changed, 0 exceptions) | RiskOfOptions 2.8.6 loads on the current RoR2 build |
@@ -202,6 +206,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - The Whiplash pull starts when the hook key is released (ULTRAKILL's rule); a pulled monster ignores RoR2 collision while dragged. Flying monsters without a CharacterMotor are moved by transform and untested.
 - The user's bridge config currently has DamageCoefficient = 1 and MouseScale = 2.1 (set through the in-game menu, so that menu works).
 - Water conduction was only tested with monsters flagged wet by the test, not standing in real stage water; whether RoR2's Water-layer colliders sit where the visible water is has not been checked on any stage. V1 standing in water while shocking it (ULTRAKILL shocks V1 too) is untested.
+- Coin conduction was tested with a coin spawned by the test hook, not one thrown by the Marksman; a thrown coin is the same prefab, but the throw itself was not scripted.
 - Magnets (Attractor nailgun) as conductors are implemented by the same code path but untested.
 - The `conduction` scenario's weapon switching is scripted with number keys and depends on which variant ULTRAKILL had out last; the Jumpstart step failed 1 run in 3.
 - Phase 7 is unverified beyond "it loads and the regression passes": nobody has opened the Mod Options screen to see the

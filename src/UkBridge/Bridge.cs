@@ -10,6 +10,7 @@ namespace V1Bridge.Uk
     public partial class Bridge : MonoBehaviour
     {
         public static Bridge I;
+        public int TestCoins;
         int parentPid;
         float nextPark, nextParentCheck;
         bool quitting;
@@ -114,6 +115,20 @@ namespace V1Bridge.Uk
                 case Proto.Parried:
                     MeleeParried(rest);
                     break;
+                case Proto.TestCoin:
+                {
+                    // a real coin from the revolver's own prefab, drifting slowly upward (a coin that stops moving is removed)
+                    var a = rest.Split(' ');
+                    Revolver rev = null;
+                    foreach (var r in Resources.FindObjectsOfTypeAll<Revolver>()) if (r.coin != null) { rev = r; break; }
+                    if (rev == null) { Plugin.Log.LogWarning("TESTCOIN: no revolver with coins"); break; }
+                    var coin = Instantiate(rev.coin, new Vector3(F(a[0]), F(a[1]), F(a[2])), Quaternion.identity);
+                    var crb = coin.GetComponent<Rigidbody>();
+                    if (crb != null) { crb.useGravity = false; crb.velocity = Vector3.up * 2f; }
+                    TestCoins++;
+                    Plugin.Log.LogInfo("TESTCOIN at " + coin.transform.position + ", zappable " + (coin.GetComponent<Zappable>() != null));
+                    break;
+                }
                 case Proto.Wet:
                     SetWet(rest);
                     break;
@@ -190,7 +205,7 @@ namespace V1Bridge.Uk
 
         string StateLine()
         {
-            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " dmg=" + DamageReports + " hook=" + HookInfo() + " pulled=" + PulledInfo() + " nails=" + NailCount() + " conductions=" + Conductions + " pulls=" + Pulls + " shots=" + shots.Count + " parries=" + Parries + " res=" + Screen.width + "x" + Screen.height
+            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " dmg=" + DamageReports + " hook=" + HookInfo() + " pulled=" + PulledInfo() + " coins=" + (MonoSingleton<ObjectTracker>.Instance != null ? MonoSingleton<ObjectTracker>.Instance.zappablesList.Count : -1) + " nails=" + NailCount() + " conductions=" + Conductions + " pulls=" + Pulls + " shots=" + shots.Count + " parries=" + Parries + " res=" + Screen.width + "x" + Screen.height
                    + " t=" + Time.unscaledTime.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " blocked=" + SaveGuard.Blocked
                    + " saves=" + GameProgressSaver.BaseSavePath.Replace(' ', '?');
         }

@@ -40,6 +40,7 @@ namespace V1Bridge
         public const string Parried = "PARRIED";   // PARRIED <monster id>: V1's punch met that monster's melee hit
         public const string Wet = "WET";           // WET 0|1: V1 stands in Risk of Rain 2's water (electricity in the water reaches V1 too)
         public const string Respawn = "RESPAWN";   // V1 alive and whole again (a new run, a revive)
+        public const string TestCoin = "TESTCOIN"; // TESTCOIN <x> <y> <z>: (tests) one of ULTRAKILL's own coins, hanging still at that point
         public const string Idle = "IDLE";         // IDLE 0|1: Risk of Rain 2 is not in a V1 run; ULTRAKILL stops drawing frames
 
         // level (ULTRAKILL -> RoR2)

@@ -78,6 +78,7 @@ namespace V1Bridge.Ror
                 case "runloop": body = RunLoop(); break;
                 case "whiplash": body = Whiplash(); break;
                 case "conduction": body = Conduction(); break;
+                case "coins": body = CoinConduction(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -1300,6 +1301,80 @@ namespace V1Bridge.Ror
             Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
             yield return BackToTitle();
         }
+        /// <summary>Nails into a monster, whichever nailgun variant happens to be out (the saw launcher sticks none).</summary>
+        IEnumerator NailIt(CharacterBody target)
+        {
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.Alpha3 } });
+                yield return new WaitForSecondsRealtime(1f);
+                yield return AimAt(() => target.corePosition);
+                yield return Hold(1.2f, new V1Drive.Frame { buttons = 1 });
+                yield return new WaitForSecondsRealtime(0.3f);
+                yield return UkState();
+                if ((StateValue(stateReply, "nails") ?? "0") != "0") yield break;
+            }
+        }
+
+        /// <summary>Coins conduct: two monsters too far apart for a shock to jump between them; with one of ULTRAKILL's
+        /// coins hanging between them it does.</summary>
+        IEnumerator CoinConduction()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+
+            // 24 m apart (ULTRAKILL's shock reaches 30 of its units, 15.6 m), V1 in the middle
+            var a = SpawnAhead("BeetleGuardMaster", 12f, false);
+            var b = SpawnAhead("BeetleGuardMaster", -12f, false);
+            if (!Check("spawned two Beetle Guards 24 m apart", a != null && b != null)) yield break;
+            foreach (var g in new[] { a, b }) { g.baseMaxHealth = 100000f; g.MarkAllStatsDirty(); }
+            yield return new WaitForSecondsRealtime(2.5f);
+            metrics["apart_m"] = F(Vector3.Distance(a.corePosition, b.corePosition));
+            Check("they are out of a shock's direct reach", Vector3.Distance(a.corePosition, b.corePosition) * V1Drive.K > 31f, F(Vector3.Distance(a.corePosition, b.corePosition) * V1Drive.K) + " ULTRAKILL units");
+
+            // 1. without a coin: the shock stays on the first
+            yield return NailIt(a);
+            yield return UkState();
+            Check("nails are in the first", (StateValue(stateReply, "nails") ?? "0") != "0", StateValue(stateReply, "nails") + " nails");
+            yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.Alpha4 } });
+            yield return new WaitForSecondsRealtime(1.5f);
+            yield return AimAt(() => a.corePosition);
+            Monsters.HitLog.Clear();
+            yield return Tap(new V1Drive.Frame { buttons = 1 });
+            yield return new WaitForSecondsRealtime(3f);
+            metrics["no_coin_first"] = HitsOn(a);
+            metrics["no_coin_second"] = HitsOn(b);
+            Check("no coin: the first is shocked", WasHit(a, "railcannon"), HitsOn(a));
+            Check("no coin: the second, too far away, is not", !WasHit(b, "zap", "aftershock"), "second was hit by: " + HitsOn(b));
+
+            // 2. with a coin hanging between them
+            yield return NailIt(a);
+            yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.Alpha4 } });
+            // the railcannon's charge
+            yield return new WaitForSecondsRealtime(14f);
+            yield return AimAt(() => a.corePosition);
+            var mid = V1Drive.ToUk((a.corePosition + b.corePosition) * 0.5f + Vector3.up * 3f);
+            UkLink.Send(Proto.TestCoin + " " + F(mid.x) + " " + F(mid.y) + " " + F(mid.z));
+            yield return new WaitForSecondsRealtime(0.3f);
+            yield return UkState();
+            metrics["coins_in_ultrakill"] = StateValue(stateReply, "coins") ?? "?";
+            Check("a coin hangs between them", (StateValue(stateReply, "coins") ?? "0") != "0", StateValue(stateReply, "coins") + " things in ULTRAKILL that carry a shock");
+            Monsters.HitLog.Clear();
+            yield return Tap(new V1Drive.Frame { buttons = 1 });
+            float t = Now;
+            while (!WasHit(b, "zap", "aftershock") && Now - t < 5f) yield return null;
+            metrics["coin_first"] = HitsOn(a);
+            metrics["coin_second"] = HitsOn(b);
+            Check("with the coin: the first is shocked", WasHit(a, "railcannon"), HitsOn(a));
+            Check("with the coin: the shock reaches the second through it", WasHit(b, "zap", "aftershock"), "second was hit by: " + HitsOn(b));
+            yield return SnapUk("uk");
+            yield return BackToTitle();
+        }
+
         static string Q(string s)
         {
             var sb = new StringBuilder("\"");
