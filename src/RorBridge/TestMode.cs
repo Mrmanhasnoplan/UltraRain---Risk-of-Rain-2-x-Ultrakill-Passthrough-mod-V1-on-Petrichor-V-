@@ -83,6 +83,7 @@ namespace V1Bridge.Ror
                 case "oil": body = OilTest(); break;
                 case "audio": body = AudioTest(); break;
                 case "blast": body = BlastTest(); break;
+                case "jumppad": body = JumpPadTest(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -1498,6 +1499,53 @@ namespace V1Bridge.Ror
                 m.healthComponent.Suicide();
                 yield return new WaitForSecondsRealtime(1f);
             }
+            yield return BackToTitle();
+        }
+
+        /// <summary>A Risk of Rain 2 jump pad throws V1, and V1 comes down about where the pad aims.</summary>
+        IEnumerator JumpPadTest()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            var pads = FindObjectsOfType<JumpVolume>();
+            metrics["jump_pads_on_stage"] = pads.Length.ToString();
+            if (!Check("the stage has jump pads", pads.Length > 0, SceneManager.GetActiveScene().name + " has " + pads.Length)) yield break;
+            var pad = pads[0];
+            int thrown0 = JumpPads.Thrown;
+            Vector3 from = pad.transform.position;
+            V1Drive.Teleport(from + Vector3.up * 0.5f, 0f);
+            float t = Now;
+            while (JumpPads.Thrown == thrown0 && Now - t < 4f) yield return null;
+            if (!Check("the pad fired for V1", JumpPads.Thrown > thrown0, pad.name)) yield break;
+            Vector3 v = JumpPads.LastVelocity, start = V1Drive.ToRor(V1Drive.Latest.feet);
+            float g = Physics.gravity.y, top = start.y, flight = 0f;
+            t = Now;
+            yield return new WaitForSecondsRealtime(0.3f);
+            // until V1 lands (or the pad's own flight time and a bit)
+            while (Now - t < Mathf.Max(8f, pad.time + 3f))
+            {
+                var p = V1Drive.ToRor(V1Drive.Latest.feet);
+                top = Mathf.Max(top, p.y);
+                if (V1Drive.Latest.grounded && Now - t > 0.6f) break;
+                yield return null;
+            }
+            flight = Now - t;
+            Vector3 landed = V1Drive.ToRor(V1Drive.Latest.feet);
+            // where RoR2's own survivor would be at its highest, and how far along
+            float apex = v.y > 0f ? v.y * v.y / (2f * -g) : 0f;
+            float along = new Vector2(landed.x - start.x, landed.z - start.z).magnitude;
+            float padAlong = pad.targetElevationTransform != null ? new Vector2(pad.targetElevationTransform.position.x - from.x, pad.targetElevationTransform.position.z - from.z).magnitude : new Vector2(v.x, v.z).magnitude * pad.time;
+            metrics["jump_pad"] = pad.name + " velocity " + v + " time " + F(pad.time);
+            metrics["jump_result"] = "rose " + F(top - start.y) + " m (RoR2 apex " + F(apex) + " m), travelled " + F(along) + " m (pad aims " + F(padAlong) + " m), " + F(flight) + " s in the air";
+            Check("V1 was thrown into the air", top - start.y > Mathf.Max(2f, apex * 0.5f), metrics["jump_result"]);
+            Check("V1 rose about as high as the pad throws a survivor", apex < 1f || Mathf.Abs(top - start.y - apex) < Mathf.Max(3f, apex * 0.3f), metrics["jump_result"]);
+            Check("V1 came down about as far along as the pad aims", Mathf.Abs(along - padAlong) < Mathf.Max(6f, padAlong * 0.35f), metrics["jump_result"]);
+            yield return SnapRor("ror2-after-jump");
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
             yield return BackToTitle();
         }
 

@@ -409,6 +409,31 @@ namespace V1Bridge.Ror
         }
     }
 
+    /// <summary>Risk of Rain 2's jump pads throw V1. The pad sets the velocity of the body's motor, which is switched off
+    /// while ULTRAKILL moves V1; the same throw is handed to ULTRAKILL instead.</summary>
+    [HarmonyLib.HarmonyPatch(typeof(JumpVolume), nameof(JumpVolume.OnTriggerStay))]
+    static class JumpPads
+    {
+        public static int Thrown;
+        public static Vector3 LastVelocity;
+        static float lastAt = -10f;
+
+        static void Postfix(JumpVolume __instance, Collider other)
+        {
+            var v1 = V1Drive.Body;
+            if (v1 == null || other == null || other.gameObject != v1.gameObject) return;
+            // the pad fires every physics step V1 is in it: one throw
+            if (Time.time - lastAt < 0.4f) return;
+            lastAt = Time.time;
+            Vector3 v = __instance.alignJumpVelocityToTransform ? __instance.transform.up * __instance.jumpVelocity.magnitude : __instance.jumpVelocity;
+            LastVelocity = v;
+            Thrown++;
+            Vector3 u = v * V1Drive.K;
+            UkLink.Send(Proto.Launch + " " + u.x.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + " " + u.y.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
+                        + " " + u.z.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + " " + (Physics.gravity.magnitude * V1Drive.K).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+        }
+    }
+
     [HarmonyLib.HarmonyPatch(typeof(PlayerCharacterMasterController))]
     static class QuietController
     {

@@ -39,6 +39,7 @@ namespace V1Bridge
         public const string Projs = "PROJS";       // PROJS id,x,y,z,radius;...: every hostile projectile in flight
         public const string Parried = "PARRIED";   // PARRIED <monster id>: V1's punch met that monster's melee hit
         public const string Wet = "WET";           // WET 0|1: V1 stands in Risk of Rain 2's water (electricity in the water reaches V1 too)
+        public const string Launch = "LAUNCH";     // LAUNCH <vx> <vy> <vz> <gravity>: a jump pad threw V1 (ULTRAKILL units/s as RoR2 meant it, under RoR2's gravity in units/s2)
         public const string Respawn = "RESPAWN";   // V1 alive and whole again (a new run, a revive)
         public const string TestCoin = "TESTCOIN"; // TESTCOIN <x> <y> <z>: (tests) one of ULTRAKILL's own coins, hanging still at that point
         public const string Idle = "IDLE";         // IDLE 0|1: Risk of Rain 2 is not in a V1 run; ULTRAKILL stops drawing frames

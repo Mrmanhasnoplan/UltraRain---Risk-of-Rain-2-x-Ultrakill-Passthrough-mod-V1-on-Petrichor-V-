@@ -130,6 +130,27 @@ namespace V1Bridge.Uk
             Plugin.Log.LogInfo("level prepared, hid " + hidden + " renderers/colliders");
         }
 
+        public int Launches;
+
+        /// <summary>LAUNCH vx vy vz g: one of Risk of Rain 2's jump pads threw V1. Done as ULTRAKILL's own jump pads do it
+        /// (off the ground, out of a slide or dash, then the velocity). The pad's throw was worked out for RoR2's
+        /// gravity; under ULTRAKILL's the same path needs every speed scaled by the square root of the ratio, so V1
+        /// comes down where the pad aims.</summary>
+        void Launch(string rest)
+        {
+            var nm = levelPrepared ? MonoSingleton<NewMovement>.Instance : null;
+            if (nm == null || nm.dead || !v1Landed) return;
+            var a = rest.Split(' ');
+            var v = new Vector3(F(a[0]), F(a[1]), F(a[2]));
+            float theirs = a.Length > 3 ? Mathf.Abs(F(a[3])) : 0f, ours = Physics.gravity.magnitude;
+            if (theirs > 0.01f && ours > 0.01f) v *= Mathf.Sqrt(ours / theirs);
+            nm.LaunchFromPoint(nm.transform.position, 0f);
+            if (nm.sliding) nm.StopSlide();
+            if (nm.boost) nm.boost = false;
+            nm.rb.velocity = v;
+            Launches++;
+        }
+
         public string VolumeInfo = "unset";
 
         /// <summary>ULTRAKILL's sound, at the player's own volumes. The bridge's save is new, and a new save's intro sets
