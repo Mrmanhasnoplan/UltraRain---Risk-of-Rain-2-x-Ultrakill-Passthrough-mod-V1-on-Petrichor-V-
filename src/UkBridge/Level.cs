@@ -320,6 +320,14 @@ namespace V1Bridge.Uk
         static void Postfix(ref bool __result) { __result = true; }
     }
 
+    /// <summary>The Sandbox hands V1 its Spawner Arm in weapon slot 6. It builds and spawns Sandbox props, which have no
+    /// place in a Risk of Rain 2 run: it is never equipped.</summary>
+    [HarmonyPatch(typeof(ULTRAKILL.Cheats.SummonSandboxArm), nameof(ULTRAKILL.Cheats.SummonSandboxArm.Enable))]
+    static class NoSpawnerArm
+    {
+        static bool Prefix() => false;
+    }
+
     /// <summary>Every weapon and arm from the start of a run: no shop.</summary>
     [HarmonyPatch(typeof(GameProgressSaver), nameof(GameProgressSaver.CheckGear))]
     static class AllGear

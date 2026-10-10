@@ -164,6 +164,8 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   in ULTRAKILL units and RoR2's gravity in the same units. UkBridge throws V1 the way ULTRAKILL's own `JumpPad` does
   (`LaunchFromPoint(self, 0)`, out of slide/dash, then `rb.velocity`), with every speed scaled by
   sqrt(ULTRAKILL gravity / RoR2 gravity) so the path, and so the landing spot, is the pad's.
+- The Sandbox's Spawner Arm (weapon slot 6) is never equipped: `SummonSandboxArm.Enable` is skipped. Its on-screen
+  "Spawner Arm in slot 6" hint goes with it.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
