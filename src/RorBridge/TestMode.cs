@@ -77,6 +77,7 @@ namespace V1Bridge.Ror
                 case "parry": body = ParryTest(); break;
                 case "runloop": body = RunLoop(); break;
                 case "whiplash": body = Whiplash(); break;
+                case "conduction": body = Conduction(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -601,10 +602,10 @@ namespace V1Bridge.Ror
         readonly HashSet<CharacterMaster> testMasters = new HashSet<CharacterMaster>();
 
         /// <summary>A monster on the ground <paramref name="metres"/> ahead of V1, standing still unless its AI is left on.</summary>
-        CharacterBody SpawnAhead(string masterName, float metres, bool ai)
+        CharacterBody SpawnAhead(string masterName, float metres, bool ai, float side = 0f)
         {
             var feet = V1Drive.ToRor(V1Drive.Latest.feet);
-            var ahead = feet + Quaternion.Euler(0f, V1Drive.Latest.yaw, 0f) * Vector3.forward * metres;
+            var ahead = feet + Quaternion.Euler(0f, V1Drive.Latest.yaw, 0f) * new Vector3(side, 0f, metres);
             if (Physics.Raycast(ahead + Vector3.up * 30f, Vector3.down, out var hit, 100f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore)) ahead = hit.point;
             var master = new MasterSummon
             {
@@ -1178,6 +1179,127 @@ namespace V1Bridge.Ror
             yield return BackToTitle();
         }
 
+        bool WasHit(CharacterBody b, params string[] hitters)
+        {
+            string id = b.GetInstanceID().ToString();
+            foreach (var h in Monsters.HitLog)
+            {
+                var a = h.Split(' ');
+                if (a[0] == id && Array.IndexOf(hitters, a[1]) >= 0) return true;
+            }
+            return false;
+        }
+
+        string HitsOn(CharacterBody b)
+        {
+            string id = b.GetInstanceID().ToString();
+            var seen = new List<string>();
+            foreach (var h in Monsters.HitLog)
+            {
+                var a = h.Split(' ');
+                if (a[0] == id && !seen.Contains(a[1])) seen.Add(a[1]);
+            }
+            return string.Join(",", seen.ToArray());
+        }
+
+        /// <summary>Conduction: electricity into a monster with nails in it arcs to the monsters near it (electric
+        /// railcannon, then the Jumpstart's cable), and what the stage has for water is reported.</summary>
+        IEnumerator Conduction()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            int waterColliders = 0;
+            foreach (var col in FindObjectsOfType<Collider>()) if (col.gameObject.layer == LayerIndex.water.intVal) waterColliders++;
+            metrics["stage_water_colliders"] = waterColliders.ToString();
+
+            var a = SpawnAhead("BeetleGuardMaster", 9f, false);
+            var b = SpawnAhead("BeetleGuardMaster", 10f, false, 6f);
+            if (!Check("spawned two Beetle Guards 6 m apart", a != null && b != null)) yield break;
+            // tough enough to take the whole test
+            foreach (var g in new[] { a, b }) { g.baseMaxHealth = 100000f; g.MarkAllStatsDirty(); }
+            yield return new WaitForSecondsRealtime(2.5f);
+            foreach (var g in new[] { a, b }) g.healthComponent.Networkhealth = g.healthComponent.fullHealth;
+
+            // 1. the Jumpstart: nails into the first one, its cable on it
+            float t = Now;
+            for (int i = 0; i < 3; i++)
+            {
+                yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.Alpha3 } });
+                yield return new WaitForSecondsRealtime(0.9f);
+            }
+            yield return AimAt(() => a.corePosition);
+            Monsters.HitLog.Clear();
+            yield return Tap(new V1Drive.Frame { buttons = 2 }, 0.2f);
+            // nails while the cable charges
+            V1Drive.Script = () => new V1Drive.Frame { buttons = 1 };
+            t = Now;
+            while (!WasHit(a, "zapper") && Now - t < 12f) yield return null;
+            V1Drive.Script = () => default;
+            float t2 = Now;
+            while (!WasHit(b, "zap", "aftershock") && Now - t2 < 4f) yield return null;
+            metrics["jumpstart_hits_first"] = HitsOn(a);
+            metrics["jumpstart_hits_second"] = HitsOn(b);
+            Check("the Jumpstart's cable shocked the first one", WasHit(a, "zapper"), "first was hit by: " + HitsOn(a));
+            Check("and that arced to the second", WasHit(b, "zap", "aftershock"), "second was hit by: " + HitsOn(b));
+            // 2. fresh nails (a shock spends the ones it runs through), then the electric railcannon into the nailed one
+            yield return new WaitForSecondsRealtime(3f);
+            yield return AimAt(() => a.corePosition);
+            yield return Hold(1.5f, new V1Drive.Frame { buttons = 1 });
+            yield return new WaitForSecondsRealtime(0.3f);
+            yield return UkState();
+            metrics["nails_stuck"] = StateValue(stateReply, "nails") ?? "?";
+            Check("nails stick in a monster", metrics["nails_stuck"] != "0" && metrics["nails_stuck"] != "?", metrics["nails_stuck"] + " nails in it");
+            yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.Alpha4 } });
+            yield return new WaitForSecondsRealtime(1.5f);
+            yield return AimAt(() => a.corePosition);
+            Monsters.HitLog.Clear();
+            yield return UkState();
+            int conductions0 = 0;
+            int.TryParse(StateValue(stateReply, "conductions"), out conductions0);
+            yield return Tap(new V1Drive.Frame { buttons = 1 });
+            t = Now;
+            while (!WasHit(b, "zap", "aftershock") && Now - t < 5f) yield return null;
+            yield return new WaitForSecondsRealtime(1f);
+            yield return UkState();
+            metrics["rail_hits_first"] = HitsOn(a);
+            metrics["rail_hits_second"] = HitsOn(b);
+            Check("the railcannon hit the nailed one", WasHit(a, "railcannon"), HitsOn(a));
+            Check("its charge arced to the second one", WasHit(b, "zap", "aftershock"), "second was hit by: " + HitsOn(b) + "; ULTRAKILL conductions " + conductions0 + " -> " + StateValue(stateReply, "conductions"));
+            yield return SnapRor("ror2-after-rail");
+
+            // 3. water: two fresh monsters with no nails in them, both standing in the stage's water
+            a.healthComponent.Suicide();
+            b.healthComponent.Suicide();
+            yield return new WaitForSecondsRealtime(1f);
+            var c = SpawnAhead("BeetleGuardMaster", 9f, false);
+            var d = SpawnAhead("BeetleGuardMaster", 10f, false, 6f);
+            if (Check("spawned two more Beetle Guards", c != null && d != null))
+            {
+                foreach (var g in new[] { c, d }) { g.baseMaxHealth = 100000f; g.MarkAllStatsDirty(); }
+                yield return new WaitForSecondsRealtime(2.5f);
+                // the railcannon needs its charge back
+                yield return new WaitForSecondsRealtime(14f);
+                Monsters.ForceMonstersWet = true;
+                yield return new WaitForSecondsRealtime(0.5f);
+                yield return AimAt(() => c.corePosition);
+                Monsters.HitLog.Clear();
+                yield return Tap(new V1Drive.Frame { buttons = 1 });
+                t = Now;
+                while (!WasHit(d, "zap", "aftershock") && Now - t < 5f) yield return null;
+                metrics["water_hits_first"] = HitsOn(c);
+                metrics["water_hits_second"] = HitsOn(d);
+                Check("the railcannon hit the one in the water", WasHit(c, "railcannon"), HitsOn(c));
+                Check("the water carried the charge to the other", WasHit(d, "zap", "aftershock"), "second was hit by: " + HitsOn(d));
+                Monsters.ForceMonstersWet = false;
+            }
+            yield return SnapUk("uk");
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
+            yield return BackToTitle();
+        }
         static string Q(string s)
         {
             var sb = new StringBuilder("\"");

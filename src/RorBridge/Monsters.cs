@@ -41,6 +41,20 @@ namespace V1Bridge.Ror
             };
         }
 
+        public static bool V1Wet;
+        /// <summary>The hits V1 landed lately, oldest first: "id hitter multiplier".</summary>
+        public static readonly List<string> HitLog = new List<string>();
+
+        /// <summary>Feet in Risk of Rain 2's water: something on its Water layer at ankle height.</summary>
+        /// <summary>For tests: every monster counts as standing in water.</summary>
+        public static bool ForceMonstersWet;
+
+        public static bool InWater(Vector3 feet, bool monster = false)
+        {
+            if (monster && ForceMonstersWet) return true;
+            return Physics.CheckSphere(feet + Vector3.up * 0.25f, 0.3f, LayerIndex.water.mask, QueryTriggerInteraction.Collide);
+        }
+
         /// <summary>Every frame of a bridged run: where every monster is.</summary>
         public static void Tick(CharacterBody v1)
         {
@@ -65,11 +79,17 @@ namespace V1Bridge.Ror
                 int id = b.GetInstanceID();
                 byId[id] = b;
                 sb.Append(id).Append(',').Append(S(feet.x)).Append(',').Append(S(feet.y)).Append(',').Append(S(feet.z)).Append(',')
-                  .Append(S(w * V1Drive.K)).Append(',').Append(S(h * V1Drive.K)).Append(',').Append(S(b.healthComponent.combinedHealth / unit)).Append(',').Append(Light(b) ? 1 : 0).Append(';');
+                  .Append(S(w * V1Drive.K)).Append(',').Append(S(h * V1Drive.K)).Append(',').Append(S(b.healthComponent.combinedHealth / unit)).Append(',').Append(Light(b) ? 1 : 0).Append(',').Append(InWater(b.corePosition - Vector3.up * (h * 0.5f), true) ? 1 : 0).Append(';');
                 heights[id] = h;
             }
             Listed = byId.Count;
             UkLink.Send(sb.ToString());
+            bool wet = InWater(v1.footPosition);
+            if (wet != V1Wet)
+            {
+                V1Wet = wet;
+                UkLink.Send(Proto.Wet + " " + (wet ? 1 : 0));
+            }
         }
 
         static readonly Dictionary<int, float> heights = new Dictionary<int, float>();
@@ -134,6 +154,8 @@ namespace V1Bridge.Ror
                 LastHit = "parry";
                 return;
             }
+            if (HitLog.Count > 400) HitLog.RemoveRange(0, 200);
+            HitLog.Add(a[0] + " " + a[4] + " " + a[1]);
             float mult = F(a[1]);
             bool explosion = a[3] == "1";
             var info = new DamageInfo

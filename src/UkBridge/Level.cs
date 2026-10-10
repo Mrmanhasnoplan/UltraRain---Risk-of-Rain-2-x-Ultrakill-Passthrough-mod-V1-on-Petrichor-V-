@@ -34,6 +34,7 @@ namespace V1Bridge.Uk
                 stageRoot = null;
                 stageMeshes.Clear();
                 proxies.Clear();
+                stageWater = null;
                 shots.Clear();
                 goreZone = null;
                 Plugin.Log.LogInfo("scene: " + scene);

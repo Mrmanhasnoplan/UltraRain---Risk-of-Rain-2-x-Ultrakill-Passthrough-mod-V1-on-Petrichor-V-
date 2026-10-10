@@ -6,7 +6,7 @@ namespace V1Bridge
     {
         public const string Version = "0.1.0";
         /// <summary>Bumped whenever a message or the frame file changes shape; the handshake refuses a mismatch.</summary>
-        public const int Protocol = 6;
+        public const int Protocol = 7;
         /// <summary>Not Ultracraft's 27110, so both can be installed side by side.</summary>
         public const int DefaultPort = 27120;
 
@@ -32,12 +32,13 @@ namespace V1Bridge
         public const string Geo = "GEO";           // GEO <path>: the stage's colliders (StageGeometry's file), replacing any before -> GEODONE
         public const string GeoClear = "GEOCLR";   // the stage is gone
         public const string Probe = "PROBE";       // PROBE <x> <y> <z> -> PROBED <ground y below that point> <collider> | PROBED none
-        public const string Ents = "ENTS";         // ENTS id,x,y,z,w,h,hp,light;...: every monster alive (feet, width, height, ULTRAKILL damage units left, 1 if the Whiplash pulls it to V1)
+        public const string Ents = "ENTS";         // ENTS id,x,y,z,w,h,hp,light,wet;...: every monster alive (feet, width, height, ULTRAKILL damage units left, 1 if the Whiplash pulls it to V1, 1 if it stands in water)
         public const string Hurt = "HURT";         // HURT <n>: V1 loses n of ULTRAKILL's 100, if ULTRAKILL agrees (dash invincibility...)
         public const string Heal = "HEAL";         // HEAL <x>: V1 gains x of ULTRAKILL's 100
         public const string Kill = "KILL";         // KILL <id>: that monster died to V1
         public const string Projs = "PROJS";       // PROJS id,x,y,z,radius;...: every hostile projectile in flight
         public const string Parried = "PARRIED";   // PARRIED <monster id>: V1's punch met that monster's melee hit
+        public const string Wet = "WET";           // WET 0|1: V1 stands in Risk of Rain 2's water (electricity in the water reaches V1 too)
         public const string Respawn = "RESPAWN";   // V1 alive and whole again (a new run, a revive)
         public const string Idle = "IDLE";         // IDLE 0|1: Risk of Rain 2 is not in a V1 run; ULTRAKILL stops drawing frames
 

@@ -152,7 +152,15 @@ namespace V1Bridge.Uk
                     }
                     p.transform.position = feet;
                 }
-                if (p.eid != null) p.eid.health = F(a[6]);
+                if (p.eid != null)
+                {
+                    p.eid.health = F(a[6]);
+                    // Risk of Rain 2's water is one body of water to ULTRAKILL: what stands in it conducts
+                    bool wet = a.Length > 8 && a[8] == "1";
+                    var water = StageWater();
+                    if (wet) p.eid.touchingWaters.Add(water);
+                    else p.eid.touchingWaters.Remove(water);
+                }
             }
             gone.Clear();
             foreach (var kv in proxies) if (!seen.Contains(kv.Key)) gone.Add(kv.Key);
@@ -283,6 +291,62 @@ namespace V1Bridge.Uk
             return cubeMesh;
         }
 
+        Water stageWater;
+
+        /// <summary>Stands for all of the stage's water. Never switched on: ULTRAKILL's electricity only asks which enemies
+        /// touch the same water, and whether V1 does.</summary>
+        Water StageWater()
+        {
+            if (stageWater != null) return stageWater;
+            var go = new GameObject("RoR2 water");
+            go.SetActive(false);
+            if (worldRoot != null) go.transform.SetParent(worldRoot.transform, false);
+            stageWater = go.AddComponent<Water>();
+            return stageWater;
+        }
+
+        void SetWet(string rest)
+        {
+            if (levelPrepared) StageWater().isPlayerTouchingWater = rest.Trim() == "1";
+        }
+
+        static readonly AccessTools.FieldRef<EnemyIdentifier, GameObject> AfterShockWeapon = AccessTools.FieldRefAccess<EnemyIdentifier, GameObject>("afterShockSourceWeapon");
+        static readonly AccessTools.FieldRef<EnemyIdentifier, bool> WaterOnlyAftershock = AccessTools.FieldRefAccess<EnemyIdentifier, bool>("waterOnlyAftershock");
+        static readonly AccessTools.FieldRef<EnemyIdentifier, bool> AfterShockFromZap = AccessTools.FieldRefAccess<EnemyIdentifier, bool>("afterShockFromZap");
+        public int Conductions;
+
+        /// <summary>What EnemyIdentifier.DeliverDamage does for a real enemy once the hit is dealt (after Ultracraft, MIT):
+        /// electricity into a monster with nails or magnets in it, or standing in water, shocks it again half a second
+        /// later and arcs to everything near. ULTRAKILL's conduction, run by ULTRAKILL's own aftershock.</summary>
+        public void Conduct(EnemyIdentifier eid, RorProxy p, GameObject sourceWeapon)
+        {
+            try
+            {
+                if (eid.nails.Count > 10)
+                {
+                    for (int j = 0; j < eid.nails.Count - 10; j++)
+                    {
+                        if (eid.nails[j] != null) Destroy(eid.nails[j].gameObject);
+                        eid.nails.RemoveAt(j);
+                    }
+                }
+                if (!eid.beingZapped && eid.hitterAttributes.Contains(HitterAttribute.Electricity) && eid.hitter != "aftershock"
+                    && (eid.nailsAmount > 0 || eid.stuckMagnets.Count > 0 || eid.touchingWaters.Count > 0))
+                {
+                    eid.beingZapped = true;
+                    foreach (var nail in eid.nails) if (nail != null) nail.Zap();
+                    AfterShockWeapon(eid) = sourceWeapon;
+                    WaterOnlyAftershock(eid) = eid.nailsAmount == 0 && eid.stuckMagnets.Count == 0;
+                    if (eid.hitter == "zap") AfterShockFromZap(eid) = true;
+                    eid.DelayedAfterShock(0.5f, p.center != null ? p.center.position : p.transform.position);
+                    Conductions++;
+                }
+            }
+            catch (Exception e) { Plugin.Log.LogWarning("conduct: " + e.Message); }
+            // a real enemy forgets what hit it after each hit; without this every later hit would count as electric
+            eid.hitterAttributes.Clear();
+        }
+
         /// <summary>DMG id multiplier head explosion hitter x y z: V1 hit a monster's stand-in.</summary>
         public void ReportDamage(RorProxy p, float multiplier, bool head, bool explosion, string hitter, Vector3 at)
         {
@@ -375,7 +439,7 @@ namespace V1Bridge.Uk
     [HarmonyPatch(typeof(EnemyIdentifier), nameof(EnemyIdentifier.DeliverDamage))]
     static class ProxyDamage
     {
-        static bool Prefix(EnemyIdentifier __instance, GameObject target, Vector3 hitPoint, float multiplier, float critMultiplier, bool fromExplosion)
+        static bool Prefix(EnemyIdentifier __instance, GameObject target, Vector3 hitPoint, float multiplier, float critMultiplier, bool fromExplosion, GameObject sourceWeapon)
         {
             var p = __instance.GetComponent<RorProxy>();
             if (p == null) return true;
@@ -384,8 +448,12 @@ namespace V1Bridge.Uk
             bool head = target != null && target == p.head;
             float dmg = multiplier;
             if (head) dmg *= critMultiplier > 0f ? 1f + critMultiplier : 2f;
-            // a touch that does nothing isn't a hit
-            if (dmg < 0.001f) return false;
+            // a touch that does nothing isn't a hit (but its electricity still counts)
+            if (dmg < 0.001f)
+            {
+                b.Conduct(__instance, p, sourceWeapon);
+                return false;
+            }
             var at = hitPoint != Vector3.zero ? hitPoint : target != null && target != __instance.gameObject ? target.transform.position : p.center.position;
             b.ReportDamage(p, dmg, head, fromExplosion, __instance.hitter, at);
             // ULTRAKILL's own blood where it was hit: splatters, stains, and V1's healing when close (the amounts
@@ -393,6 +461,7 @@ namespace V1Bridge.Uk
             var type = head ? GoreType.Head : dmg >= 1f || fromExplosion ? GoreType.Body : GoreType.Small;
             int hp = __instance.hitter == "nail" ? 1 : __instance.hitter == "shotgun" || __instance.hitter == "shotgunzone" || fromExplosion ? 3 : -1;
             b.SpawnGore(__instance, type, at, fromExplosion, hp);
+            b.Conduct(__instance, p, sourceWeapon);
             return false;
         }
     }

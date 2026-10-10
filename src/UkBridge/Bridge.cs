@@ -114,6 +114,9 @@ namespace V1Bridge.Uk
                 case Proto.Parried:
                     MeleeParried(rest);
                     break;
+                case Proto.Wet:
+                    SetWet(rest);
+                    break;
                 case Proto.Hurt:
                     Hurt(rest);
                     break;
@@ -167,6 +170,13 @@ namespace V1Bridge.Uk
             return "none";
         }
 
+        int NailCount()
+        {
+            int n = 0;
+            foreach (var p in proxies.Values) if (p != null && p.eid != null) n += p.eid.nailsAmount;
+            return n;
+        }
+
         static string HookInfo()
         {
             try
@@ -180,7 +190,7 @@ namespace V1Bridge.Uk
 
         string StateLine()
         {
-            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " dmg=" + DamageReports + " hook=" + HookInfo() + " pulled=" + PulledInfo() + " pulls=" + Pulls + " shots=" + shots.Count + " parries=" + Parries + " res=" + Screen.width + "x" + Screen.height
+            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " dmg=" + DamageReports + " hook=" + HookInfo() + " pulled=" + PulledInfo() + " nails=" + NailCount() + " conductions=" + Conductions + " pulls=" + Pulls + " shots=" + shots.Count + " parries=" + Parries + " res=" + Screen.width + "x" + Screen.height
                    + " t=" + Time.unscaledTime.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " blocked=" + SaveGuard.Blocked
                    + " saves=" + GameProgressSaver.BaseSavePath.Replace(' ', '?');
         }
