@@ -1,4 +1,4 @@
-# UltraRain: V1 on Petrichor V
+# Risk of Kill: V1 on Petrichor V
 
 A passthrough mod for Risk of Rain 2 and ULTRAKILL, allowing you to play as V1 on Petrichor V. All weapons are in the
 game and work, along with conduction and the Whiplash. Items also affect V1, although some items such as Soldier's
