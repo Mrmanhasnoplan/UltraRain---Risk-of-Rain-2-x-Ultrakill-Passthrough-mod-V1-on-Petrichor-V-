@@ -157,12 +157,11 @@ namespace V1Bridge.Uk
         {
             v1Landed = true;
             GameStateManager.Instance.PopState("pit-falling");
-            try
-            {
-                MonoSingleton<GunSetter>.Instance?.ResetWeapons();
-                MonoSingleton<FistControl>.Instance?.ResetFists();
-            }
-            catch (Exception e) { Plugin.Log.LogWarning("loadout: " + e.Message); }
+            // each on its own: a weapon that fails to build must not cost V1 its arms (the Whiplash is one of them)
+            try { MonoSingleton<GunSetter>.Instance?.ResetWeapons(); }
+            catch (Exception e) { Plugin.Log.LogWarning("weapons: " + e.Message); }
+            try { MonoSingleton<FistControl>.Instance?.ResetFists(); }
+            catch (Exception e) { Plugin.Log.LogWarning("arms: " + e.Message); }
             try { nm.ActivatePlayer(); }
             catch (Exception e)
             {
@@ -186,6 +185,8 @@ namespace V1Bridge.Uk
             }
             var gc = MonoSingleton<GunControl>.Instance;
             string slots = gc != null ? string.Join("/", gc.slots.ConvertAll(s => s.Count.ToString()).ToArray()) : "?";
+            var hookArm = MonoSingleton<HookArm>.Instance;
+            slots += " whiplash=" + (hookArm != null && hookArm.equipped ? 1 : 0);
             Plugin.Log.LogInfo("V1 landed: camera " + (nm.cc != null && nm.cc.isActiveAndEnabled ? "on" : "OFF") + ", HUD relay " + (relay != null ? "on" : "missing") + ", weapons per slot " + slots);
             Net.Send(Proto.Landed + " weapons=" + slots);
         }

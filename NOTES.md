@@ -114,6 +114,14 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   UltrakillHeight, UltrakillFpsCap (both re-sent live as `SIZE`), MouseScale, DamageCoefficient, IncomingDamage,
   HideRoR2HealthAndSkills. `tools\Install.ps1` chains SDK check → Setup-Profiles → Install-UkDoorstop → Build;
   `tools\Play.ps1` launches. README.md is the user guide.
+- Whiplash: each stand-in carries a trigger box on ULTRAKILL's layer 12 with its own kinematic Rigidbody (the hook only
+  takes hold of layers 11/12; the head/body boxes on layer 10 are for weapons). `ENTS` carries a light flag: not a boss
+  or champion and mass ≤ 250 kg (`Monsters.Light`). Light stand-ins are `EnemyType.Puppet`, which UkBridge adds to
+  `HookArm.lightEnemies`, and have a root Rigidbody the hook drags; while `eid.hooked`, UkBridge stops following RoR2's
+  position and sends `PULL id feet` every frame, RorBridge moves the real monster there (motor `SetPosition`) and
+  re-stuns it every 0.25 s; `PULLEND` hands back the release velocity. Heavy stand-ins stay `Mannequin`: V1 flies to them.
+  The hook's own 0.2 hit arrives through the normal damage path (hitter `hook`).
+- V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
 
@@ -150,6 +158,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-10 01:3x | whiplash (golemplains) | PASS (1 run) | Lemurian (100 kg, light) dragged 14.2 m → 0.27 m from V1 with V1 not moving; Beetle Guard (300 kg, heavy) stayed put and V1 flew 16.1 m → 1.9 m; hook hit x0.2 arrived |
 | 2026-10-10 01:1x | runloop, with Risk of Options and the Phase 7 options | PASS (45/45, 0 real files changed, 0 exceptions) | RiskOfOptions 2.8.6 loads on the current RoR2 build |
 | 2026-10-10 00:59 | runloop (golemplains → blackbeach) | PASS (45/45, 0 real files changed, 0 exceptions logged) | item droplet picked up; BoostDamage x10 took the damage unit 36→72; chest opened with interact (515→490 gold); teleporter started and reached 5% in 5 s; stage change re-engaged in 1.3 s (215 colliders, 144,085 triangles), HP 70→73 kept; HURT 999 ended the run 2 s later; new run started at 100 HP |
 | 2026-10-10 00:3x | parry (golemplains) | PASS 28/28 on 2 of 4 runs; the others missed the scripted fireball catch | melee parry returned 180 damage (5 units) and cost V1 nothing; unparried melee landed after 0.22 s; fireball caught and its owner killed |
@@ -179,6 +188,9 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - RoR2's passive regeneration is forwarded like any heal, so V1 slowly regenerates in ULTRAKILL (hard damage still caps it).
 - A monster's stand-in is one box from its movement capsule (x1.15), not its real hurt boxes; big or oddly shaped bosses will be off.
 - Overheal (ULTRAKILL HP above 100) is not shown on the RoR2 body.
+- The Whiplash pull starts when the hook key is released (ULTRAKILL's rule); a pulled monster ignores RoR2 collision while dragged. Flying monsters without a CharacterMotor are moved by transform and untested.
+- ULTRAKILL logs "arms: The Object you want to instantiate is null" when equipping arms (one arm prefab is missing in the Sandbox); Feedbacker and Whiplash still equip.
+- The user's bridge config currently has DamageCoefficient = 1 and MouseScale = 2.1 (set through the in-game menu, so that menu works).
 - Phase 7 is unverified beyond "it loads and the regression passes": nobody has opened the Mod Options screen to see the
   sliders, changed a setting mid-run, or run `tools\Install.ps1` end to end on a clean checkout (its parts were run separately).
 - No performance options beyond ULTRAKILL's resolution and frame cap (no low-end preset, no lock-step, no D3D11 shared texture);

@@ -16,11 +16,14 @@ namespace V1Bridge.Uk
         public int id;
         public EnemyIdentifier eid;
         public GameObject head;
-        public BoxCollider body, headBox, rootBox;
+        public BoxCollider body, headBox, rootBox, whipBox;
         public Rigidbody rb;
         public Transform center, occluder;
         public Vector3 velocity, lastPos;
         public float lastSeen, w, h;
+        /// <summary>The Whiplash pulls it to V1 (otherwise V1 to it), and it is being pulled right now.</summary>
+        public bool light, pulled;
+        public Rigidbody rootRb;
         public readonly CancellationTokenSource life = new CancellationTokenSource();
         Vector3 cachedPos, cachedHead;
 
@@ -62,7 +65,19 @@ namespace V1Bridge.Uk
         readonly List<int> gone = new List<int>();
         GoreZone goreZone;
         float healCarry;
-        public int DamageReports;
+        public int DamageReports, Pulls;
+
+        /// <summary>The Whiplash decides light or heavy from a list of ULTRAKILL's enemy types. Light stand-ins are
+        /// Puppets, and Puppet joins that list.</summary>
+        static void TeachHook()
+        {
+            var field = AccessTools.Field(typeof(HookArm), "lightEnemies");
+            if (field == null) return;
+            foreach (var hook in Resources.FindObjectsOfTypeAll<HookArm>())
+            {
+                if (field.GetValue(hook) is List<EnemyType> list && !list.Contains(EnemyType.Puppet)) list.Add(EnemyType.Puppet);
+            }
+        }
 
         void ClearProxies()
         {
@@ -96,9 +111,15 @@ namespace V1Bridge.Uk
                 seen.Add(id);
                 var feet = new Vector3(F(a[1]), F(a[2]), F(a[3]));
                 float w = F(a[4]), h = F(a[5]);
+                bool light = a.Length > 7 && a[7] == "1";
+                if (proxies.TryGetValue(id, out var old) && old != null && old.light != light)
+                {
+                    RemoveProxy(old);
+                    proxies.Remove(id);
+                }
                 if (!proxies.TryGetValue(id, out var p) || p == null)
                 {
-                    p = MakeProxy(id, w, h);
+                    p = MakeProxy(id, w, h, light);
                     proxies[id] = p;
                     p.lastPos = feet;
                 }
@@ -107,7 +128,30 @@ namespace V1Bridge.Uk
                 if (p.lastSeen > 0f && dt > 0.0001f) p.velocity = (feet - p.lastPos) / dt;
                 p.lastSeen = Time.time;
                 p.lastPos = feet;
-                p.transform.position = feet;
+                if (p.light && p.eid != null && p.eid.hooked)
+                {
+                    // the Whiplash has it: ULTRAKILL moves the stand-in, and Risk of Rain 2's monster follows
+                    if (!p.pulled)
+                    {
+                        p.pulled = true;
+                        p.rootRb.isKinematic = false;
+                    }
+                    var at = p.transform.position;
+                    Net.Send(Proto.Pull + " " + id + " " + S(at.x) + " " + S(at.y) + " " + S(at.z));
+                    Pulls++;
+                }
+                else
+                {
+                    if (p.pulled)
+                    {
+                        p.pulled = false;
+                        var v = p.rootRb.velocity;
+                        p.rootRb.velocity = Vector3.zero;
+                        p.rootRb.isKinematic = true;
+                        Net.Send(Proto.PullEnd + " " + id + " " + S(v.x) + " " + S(v.y) + " " + S(v.z));
+                    }
+                    p.transform.position = feet;
+                }
                 if (p.eid != null) p.eid.health = F(a[6]);
             }
             gone.Clear();
@@ -131,11 +175,13 @@ namespace V1Bridge.Uk
             p.center.localPosition = new Vector3(0, h * 0.5f, 0);
             p.rootBox.size = new Vector3(w, h, w);
             p.rootBox.center = new Vector3(0, h * 0.5f, 0);
+            p.whipBox.size = new Vector3(w, h, w);
+            p.whipBox.center = new Vector3(0, h * 0.5f, 0);
             p.occluder.localPosition = new Vector3(0, h * 0.5f, 0);
             p.occluder.localScale = new Vector3(w * 0.8f, h * 0.95f, w * 0.8f);
         }
 
-        RorProxy MakeProxy(int id, float w, float h)
+        RorProxy MakeProxy(int id, float w, float h, bool light)
         {
             var root = new GameObject("ror_" + id);
             root.SetActive(false);
@@ -144,6 +190,13 @@ namespace V1Bridge.Uk
             root.tag = "Enemy";
             var proxy = root.AddComponent<RorProxy>();
             proxy.id = id;
+            proxy.light = light;
+            // what the Whiplash drags when the monster is a light one; still, and out of physics' hands, otherwise
+            proxy.rootRb = root.AddComponent<Rigidbody>();
+            proxy.rootRb.isKinematic = true;
+            proxy.rootRb.useGravity = false;
+            proxy.rootRb.constraints = RigidbodyConstraints.FreezeRotation;
+            if (light) TeachHook();
             var body = new GameObject("body");
             body.transform.SetParent(root.transform, false);
             body.layer = 10;
@@ -160,7 +213,7 @@ namespace V1Bridge.Uk
             proxy.center = center.transform;
             var eid = root.AddComponent<EnemyIdentifier>();
             // a type none of ULTRAKILL's per-enemy damage exceptions cover
-            eid.enemyType = EnemyType.Mannequin;
+            eid.enemyType = light ? EnemyType.Puppet : EnemyType.Mannequin;
             eid.weakPoint = head;
             eid.health = 2f;
             eid.overrideCenter = center.transform;
@@ -180,6 +233,16 @@ namespace V1Bridge.Uk
                 lrb.isKinematic = true;
                 lrb.useGravity = false;
             }
+            // the Whiplash only takes hold of what is on ULTRAKILL's enemy-trigger layer: a trigger box over the whole monster,
+            // as its own enemies carry
+            var whip = new GameObject("whip");
+            whip.transform.SetParent(root.transform, false);
+            whip.layer = 12;
+            proxy.whipBox = whip.AddComponent<BoxCollider>();
+            proxy.whipBox.isTrigger = true;
+            var wrb = whip.AddComponent<Rigidbody>();
+            wrb.isKinematic = true;
+            wrb.useGravity = false;
             proxy.rb = body.GetComponent<Rigidbody>();
             proxy.eid = eid;
             // RoR2 draws the monster; here it only hides ULTRAKILL's effects behind it (a slim box, depth only)

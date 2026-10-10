@@ -157,9 +157,30 @@ namespace V1Bridge.Uk
             }
         }
 
+        string PulledInfo()
+        {
+            foreach (var p in proxies.Values)
+            {
+                if (p == null || !p.pulled) continue;
+                return S(p.transform.position.x) + "," + S(p.transform.position.y) + "," + S(p.transform.position.z) + "/v" + S(p.rootRb.velocity.magnitude) + "/" + (p.rootRb.isKinematic ? "kin" : "dyn");
+            }
+            return "none";
+        }
+
+        static string HookInfo()
+        {
+            try
+            {
+                var h = MonoSingleton<HookArm>.Instance;
+                if (h == null) return "none";
+                return (h.equipped ? "eq" : "uneq") + "/" + h.state + "/" + (HarmonyLib.Traverse.Create(h).Field("caughtEid").GetValue() != null ? "enemy" : "-") + "/" + (HarmonyLib.Traverse.Create(h).Field("lightTarget").GetValue<bool>() ? "light" : "heavy");
+            }
+            catch (Exception e) { return "err:" + e.Message.Replace(' ', '_'); }
+        }
+
         string StateLine()
         {
-            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " dmg=" + DamageReports + " shots=" + shots.Count + " parries=" + Parries + " res=" + Screen.width + "x" + Screen.height
+            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " dmg=" + DamageReports + " hook=" + HookInfo() + " pulled=" + PulledInfo() + " pulls=" + Pulls + " shots=" + shots.Count + " parries=" + Parries + " res=" + Screen.width + "x" + Screen.height
                    + " t=" + Time.unscaledTime.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " blocked=" + SaveGuard.Blocked
                    + " saves=" + GameProgressSaver.BaseSavePath.Replace(' ', '?');
         }

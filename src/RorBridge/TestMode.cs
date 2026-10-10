@@ -76,6 +76,7 @@ namespace V1Bridge.Ror
                 case "combat": body = Combat(); break;
                 case "parry": body = ParryTest(); break;
                 case "runloop": body = RunLoop(); break;
+                case "whiplash": body = Whiplash(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -614,6 +615,13 @@ namespace V1Bridge.Ror
             testMasters.Add(master);
             if (!ai) foreach (var a in master.GetComponents<RoR2.CharacterAI.BaseAI>()) a.enabled = false;
             var spawned = master.GetBody();
+            if (!ai && spawned != null)
+            {
+                // switching the AI component off does not stop every monster walking: no speed does
+                spawned.baseMoveSpeed = 0f;
+                spawned.baseAcceleration = 0f;
+                spawned.MarkAllStatsDirty();
+            }
             // what the director gives a monster it spawns
             var rewards = spawned != null ? spawned.GetComponent<DeathRewards>() : null;
             if (rewards != null) { rewards.goldReward = 12; rewards.expReward = 20; }
@@ -1082,6 +1090,91 @@ namespace V1Bridge.Ror
             Check("and standing on the stage", V1Drive.Latest.grounded);
             yield return SnapRor("ror2-new-run");
             yield return SnapUk("uk");
+            yield return BackToTitle();
+        }
+
+        /// <summary>The Whiplash: a light monster is dragged to V1 (in Risk of Rain 2 too); a heavy one stays where it is and
+        /// V1 flies to it; the hook's own damage arrives.</summary>
+        IEnumerator Whiplash()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            Func<Vector3> eye = () => V1Drive.ToRor(V1Drive.Latest.eye);
+
+            // 1. light: the monster comes to V1
+            var lem = SpawnAhead("LemurianMaster", 14f, false);
+            if (!Check("spawned a Lemurian 14 m away", lem != null)) yield break;
+            yield return new WaitForSecondsRealtime(2.5f);
+            Check("a Lemurian counts as light", Monsters.Light(lem), "mass " + F(lem.characterMotor != null ? lem.characterMotor.mass : -1f));
+            float far = Vector3.Distance(lem.corePosition, eye()), near = far;
+            Vector3 v1Start = V1Drive.ToRor(V1Drive.Latest.feet);
+            int hits0 = Monsters.HitsApplied, pulls0 = Monsters.PullsApplied;
+            string hookHit = "";
+            float t = Now;
+            for (int attempt = 0; attempt < 3 && Monsters.PullsApplied == pulls0; attempt++)
+            {
+                yield return AimAt(() => lem.corePosition);
+                V1Drive.Script = () => new V1Drive.Frame { keys = new[] { KeyCode.R } };
+                yield return new WaitForSecondsRealtime(0.35f);
+                yield return UkState();
+                metrics["hook_state_light_" + attempt] = StateValue(stateReply, "hook") ?? "?";
+                // the pull starts when the key is let go
+                V1Drive.Script = () => default;
+                t = Now;
+                while (Now - t < 2.5f && lem != null && lem.healthComponent.alive)
+                {
+                    near = Mathf.Min(near, Vector3.Distance(lem.corePosition, eye()));
+                    if (Monsters.HitsApplied > hits0 && hookHit.Length == 0) hookHit = Monsters.LastHit;
+                    yield return null;
+                }
+                V1Drive.Script = () => default;
+                yield return new WaitForSecondsRealtime(0.8f);
+            }
+            float v1Moved = Vector3.Distance(V1Drive.ToRor(V1Drive.Latest.feet), v1Start);
+            metrics["light_pull"] = F(far) + " m -> " + F(near) + " m, " + (Monsters.PullsApplied - pulls0) + " pull updates, V1 moved " + F(v1Moved) + " m";
+            metrics["hook_hit"] = hookHit;
+            Check("the hook's own hit arrived", hookHit.Contains("hook"), hookHit);
+            Check("the Lemurian was dragged to V1 in Risk of Rain 2", Monsters.PullsApplied > pulls0 && near < 4.5f && near < far - 6f, metrics["light_pull"]);
+            Check("V1 stayed where it was", v1Moved < 3f, F(v1Moved) + " m");
+            yield return SnapRor("ror2-after-light-pull");
+            if (lem != null && lem.healthComponent.alive) lem.healthComponent.Suicide();
+            yield return new WaitForSecondsRealtime(1f);
+
+            // 2. heavy: V1 goes to the monster
+            var guard = SpawnAhead("BeetleGuardMaster", 16f, false);
+            if (!Check("spawned a Beetle Guard 16 m away", guard != null)) yield break;
+            yield return new WaitForSecondsRealtime(2.5f);
+            Check("a Beetle Guard counts as heavy", !Monsters.Light(guard), "mass " + F(guard.characterMotor != null ? guard.characterMotor.mass : -1f));
+            Vector3 guardStart = guard.corePosition;
+            far = Vector3.Distance(guard.corePosition, eye());
+            near = far;
+            pulls0 = Monsters.PullsApplied;
+            for (int attempt = 0; attempt < 3 && near > far - 6f; attempt++)
+            {
+                yield return AimAt(() => guard.corePosition);
+                V1Drive.Script = () => new V1Drive.Frame { keys = new[] { KeyCode.R } };
+                yield return new WaitForSecondsRealtime(0.35f);
+                V1Drive.Script = () => default;
+                t = Now;
+                while (Now - t < 2.5f)
+                {
+                    near = Mathf.Min(near, Vector3.Distance(guard.corePosition, eye()));
+                    yield return null;
+                }
+                V1Drive.Script = () => default;
+                yield return new WaitForSecondsRealtime(0.8f);
+            }
+            float guardMoved = Vector3.Distance(guard.corePosition, guardStart);
+            metrics["heavy_pull"] = F(far) + " m -> " + F(near) + " m, the Beetle Guard moved " + F(guardMoved) + " m";
+            Check("V1 flew to the Beetle Guard", near < far - 6f && near < 6f, metrics["heavy_pull"]);
+            Check("the Beetle Guard was not dragged", guardMoved < 2f && Monsters.PullsApplied == pulls0, F(guardMoved) + " m");
+            yield return SnapRor("ror2-after-heavy-pull");
+            yield return SnapUk("uk");
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
             yield return BackToTitle();
         }
 

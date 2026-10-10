@@ -47,6 +47,7 @@ namespace V1Bridge.Ror
             sb.Length = 0;
             sb.Append(Proto.Ents).Append(' ');
             byId.Clear();
+            heights.Clear();
             float unit = UnitDamage(v1);
             var team = v1.teamComponent != null ? v1.teamComponent.teamIndex : TeamIndex.Player;
             foreach (var b in CharacterBody.readOnlyInstancesList)
@@ -64,14 +65,64 @@ namespace V1Bridge.Ror
                 int id = b.GetInstanceID();
                 byId[id] = b;
                 sb.Append(id).Append(',').Append(S(feet.x)).Append(',').Append(S(feet.y)).Append(',').Append(S(feet.z)).Append(',')
-                  .Append(S(w * V1Drive.K)).Append(',').Append(S(h * V1Drive.K)).Append(',').Append(S(b.healthComponent.combinedHealth / unit)).Append(';');
+                  .Append(S(w * V1Drive.K)).Append(',').Append(S(h * V1Drive.K)).Append(',').Append(S(b.healthComponent.combinedHealth / unit)).Append(',').Append(Light(b) ? 1 : 0).Append(';');
+                heights[id] = h;
             }
             Listed = byId.Count;
             UkLink.Send(sb.ToString());
         }
 
+        static readonly Dictionary<int, float> heights = new Dictionary<int, float>();
+        static readonly Dictionary<int, float> stunnedAt = new Dictionary<int, float>();
+        public static int PullsApplied;
+        /// <summary>Above this mass (kg) the Whiplash takes V1 to the monster instead of the monster to V1.</summary>
+        public const float LightMass = 250f;
+
+        /// <summary>The Whiplash pulls it to V1: not a boss or a champion, and not heavy.</summary>
+        public static bool Light(CharacterBody b)
+        {
+            if (b.isChampion || b.isBoss) return false;
+            float mass = b.characterMotor != null ? b.characterMotor.mass : b.rigidbody != null ? b.rigidbody.mass : 9999f;
+            return mass <= LightMass;
+        }
+
+        /// <summary>PULL id x y z: the Whiplash has that monster; it goes where ULTRAKILL has dragged its stand-in, helpless.</summary>
+        static void Pulled(string[] a, bool end)
+        {
+            if (a.Length < 4 || !byId.TryGetValue(int.Parse(a[0]), out var b) || b == null) return;
+            var v = new Vector3(F(a[1]), F(a[2]), F(a[3]));
+            if (end)
+            {
+                // let go: it keeps the speed it was dragged at
+                if (b.characterMotor != null) b.characterMotor.velocity = v / V1Drive.K;
+                else if (b.rigidbody != null) b.rigidbody.velocity = v / V1Drive.K;
+                return;
+            }
+            heights.TryGetValue(int.Parse(a[0]), out float h);
+            Vector3 delta = V1Drive.ToRor(v) + Vector3.up * (h * 0.5f) - b.corePosition;
+            if (b.characterMotor != null)
+            {
+                b.characterMotor.velocity = Vector3.zero;
+                b.characterMotor.Motor.SetPosition(b.characterMotor.Motor.TransientPosition + delta);
+            }
+            else
+            {
+                b.transform.position += delta;
+                if (b.rigidbody != null) { b.rigidbody.position = b.transform.position; b.rigidbody.velocity = Vector3.zero; }
+            }
+            PullsApplied++;
+            int id = b.GetInstanceID();
+            if (!stunnedAt.TryGetValue(id, out float at) || Time.time - at > 0.25f)
+            {
+                stunnedAt[id] = Time.time;
+                var hurt = b.GetComponent<SetStateOnHurt>();
+                if (hurt != null && hurt.canBeStunned) hurt.SetStun(0.5f);
+            }
+        }
+
         public static void OnMessage(string cmd, string rest)
         {
+            if (cmd == Proto.Pull || cmd == Proto.PullEnd) { Pulled(rest.Split(' '), cmd == Proto.PullEnd); return; }
             if (cmd != Proto.Damage) return;
             var v1 = V1Drive.Body;
             var a = rest.Split(' ');
