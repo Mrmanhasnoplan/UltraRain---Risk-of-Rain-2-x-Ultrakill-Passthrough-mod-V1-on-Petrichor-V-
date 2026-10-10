@@ -121,6 +121,9 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   position and sends `PULL id feet` every frame, RorBridge moves the real monster there (motor `SetPosition`) and
   re-stuns it every 0.25 s; `PULLEND` hands back the release velocity. Heavy stand-ins stay `Mannequin`: V1 flies to them.
   The hook's own 0.2 hit arrives through the normal damage path (hitter `hook`).
+- All-gear ownership excludes `arm3` (the gold arm exists in code only): owning it made `FistControl.ResetFists` throw
+  before it switched on the HUD's fist panels and applied the current arm. `GunSetter.CheckWeapon` is skipped for a
+  variant with no prefab. With both, the loadout set-up runs to the end and the fist icon shows in ULTRAKILL's HUD.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -189,7 +192,6 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - A monster's stand-in is one box from its movement capsule (x1.15), not its real hurt boxes; big or oddly shaped bosses will be off.
 - Overheal (ULTRAKILL HP above 100) is not shown on the RoR2 body.
 - The Whiplash pull starts when the hook key is released (ULTRAKILL's rule); a pulled monster ignores RoR2 collision while dragged. Flying monsters without a CharacterMotor are moved by transform and untested.
-- ULTRAKILL logs "arms: The Object you want to instantiate is null" when equipping arms (one arm prefab is missing in the Sandbox); Feedbacker and Whiplash still equip.
 - The user's bridge config currently has DamageCoefficient = 1 and MouseScale = 2.1 (set through the in-game menu, so that menu works).
 - Phase 7 is unverified beyond "it loads and the regression passes": nobody has opened the Mod Options screen to see the
   sliders, changed a setting mid-run, or run `tools\Install.ps1` end to end on a clean checkout (its parts were run separately).
@@ -200,7 +202,6 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - Key overlaps not resolved: RoR2's Equipment key (Q by default) is taken from ULTRAKILL (its "last weapon"), and its Interact key (E) from ULTRAKILL's "change variation"; RoR2 pings and sprint are not routed at all.
 - Not tested: revives (Dio's Best Friend), the teleporter boss fight to completion, the bazaar, void fields, Mithrix, and any stage other than golemplains and blackbeach.
 - RoR2 instant-kill effects cannot kill V1 (every hit is NonLethal on the RoR2 side); out-of-bounds zones do not move V1.
-- ULTRAKILL logs "loadout: The Object you want to instantiate is null" when building the all-gear loadout (weapons 3/3/3/3/3/4 per slot still arrive).
 - Mouse sensitivity mapping (Rewired counts → ULTRAKILL look) is untested by a human.
 - The colour/coverage join costs ~5 ms per frame on a worker thread at 720p; a candidate for optimisation in Phase 7.
 - RoR2 settings changed while on the bridge profile are saved to the sandbox, not to the real `Config\config.cfg`.

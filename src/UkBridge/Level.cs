@@ -187,6 +187,10 @@ namespace V1Bridge.Uk
             string slots = gc != null ? string.Join("/", gc.slots.ConvertAll(s => s.Count.ToString()).ToArray()) : "?";
             var hookArm = MonoSingleton<HookArm>.Instance;
             slots += " whiplash=" + (hookArm != null && hookArm.equipped ? 1 : 0);
+            var fists = MonoSingleton<FistControl>.Instance;
+            bool panel = false;
+            if (fists != null && fists.fistPanels != null) foreach (var fp in fists.fistPanels) panel |= fp != null && fp.activeSelf;
+            slots += " fistpanel=" + (panel ? 1 : 0);
             Plugin.Log.LogInfo("V1 landed: camera " + (nm.cc != null && nm.cc.isActiveAndEnabled ? "on" : "OFF") + ", HUD relay " + (relay != null ? "on" : "missing") + ", weapons per slot " + slots);
             Net.Send(Proto.Landed + " weapons=" + slots);
         }
@@ -242,6 +246,15 @@ namespace V1Bridge.Uk
     [HarmonyPatch(typeof(GameProgressSaver), nameof(GameProgressSaver.CheckGear))]
     static class AllGear
     {
-        static bool Prefix(ref int __result) { __result = 1; return false; }
+        // the gold arm is in the code but not in the game: owning it makes the arm set-up throw half way, before the
+        // HUD's fist panel is switched on
+        static bool Prefix(string gear, ref int __result) { __result = gear == "arm3" ? 0 : 1; return false; }
+    }
+
+    /// <summary>A weapon variant the game has no model for yet is skipped, not allowed to stop the rest of the loadout.</summary>
+    [HarmonyPatch(typeof(GunSetter), "CheckWeapon")]
+    static class OnlyRealWeapons
+    {
+        static bool Prefix(GameObject[] prefabs) => prefabs != null && prefabs.Length > 0 && prefabs[0] != null;
     }
 }
