@@ -2,13 +2,14 @@
 
 A passthrough mod for Risk of Rain 2 and ULTRAKILL, allowing you to play as V1 on Petrichor V. All weapons are in the
 game and work, along with conduction and the Whiplash. Items also affect V1, although some items such as Soldier's
-Syringe don't. This mod will receive further updates like multiplayer, sound and the ability to actually use jump pads/shrooms in future.
+Syringe don't. ULTRAKILL's sound and Risk of Rain 2's jump pads now work (bouncy mushrooms have not been tested yet).
+This mod will receive further updates like multiplayer in future.
 
 It runs the real ULTRAKILL beside Risk of Rain 2 and draws it into RoR2's window: ULTRAKILL's own movement, weapons,
 arms, HUD, style meter and sounds. The RoR2 stage is ULTRAKILL's level and RoR2's monsters are its targets. Nothing of
 ULTRAKILL is reimplemented. (In the code and scripts the project is called "V1 Bridge".)
 
-> **Early build.** It has only been run on one PC, on two stages, with the game versions of October 2026. Setup is a
+> **Early build.** It has only been run on one PC, on three stages, with the game versions of October 2026. Setup is a
 > PowerShell script that builds the mod against your own games. Known gaps: big bosses have rough hit boxes, moving
 > platforms and map-edge walls are not solid for V1, and gasoline on the ground is not drawn. The full list is in
 > [NOTES.md](NOTES.md).
@@ -51,14 +52,15 @@ that a copy kept in `profiles\ror2\cache` shows at once.
 
 - Keys and mouse are ULTRAKILL's, with ULTRAKILL's own binds (a copy of yours, taken on first run).
 - If you use E to swap weapons in ULTRAKILL make sure to change the interact button in risk of rain from E to something else.
-- Along with that in mod options under risk of options you can edit your mouse speed, as it's very slow on default.
+- Along with that in mod options under risk of options you can edit your mouse speed (MouseScale), as it's very slow on
+  default: the default is 1, and around 2 feels closer to ULTRAKILL's own.
 - Risk of Rain 2 keeps **Interact** (chests, shrines, teleporter), **Equipment**, **Escape** and the scoreboard.
 - Damage: one ULTRAKILL damage unit (a revolver shot) is 300% of V1's RoR2 damage stat, so levels and damage items count.
   Kills are Risk of Rain 2's: gold, experience, on-kill items.
 - Health: ULTRAKILL's HP is the truth and RoR2's health follows it. RoR2 works out a hit (armor, shield, barrier) and
   ULTRAKILL takes what got through, unless V1 is invincible (a dash, the moment after a hit). RoR2 healing heals V1.
 - Parry: punch a monster as its melee hit lands, or punch a projectile as it arrives.
-- DO NOT attempt to use the spawner arm in the 6th weapon slot. Doesnt work and will force you to restart your game to continue playing.
+- The Sandbox's spawner arm is no longer in the 6th weapon slot: that slot is empty.
 
 ### Your saves
 
