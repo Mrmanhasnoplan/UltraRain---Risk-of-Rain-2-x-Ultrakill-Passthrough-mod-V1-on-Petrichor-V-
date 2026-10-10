@@ -58,6 +58,7 @@ that a copy kept in `profiles\ror2\cache` shows at once.
 - Health: ULTRAKILL's HP is the truth and RoR2's health follows it. RoR2 works out a hit (armor, shield, barrier) and
   ULTRAKILL takes what got through, unless V1 is invincible (a dash, the moment after a hit). RoR2 healing heals V1.
 - Parry: punch a monster as its melee hit lands, or punch a projectile as it arrives.
+- DO NOT attempt to use the spawner arm in the 6th weapon slot. Doesnt work and will force you to restart your game to continue playing.
 
 ### Your saves
 
