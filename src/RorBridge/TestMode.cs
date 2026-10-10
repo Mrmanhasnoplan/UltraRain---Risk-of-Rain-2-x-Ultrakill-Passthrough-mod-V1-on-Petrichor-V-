@@ -81,6 +81,7 @@ namespace V1Bridge.Ror
                 case "coins": body = CoinConduction(); break;
                 case "model": body = ModelTest(); break;
                 case "oil": body = OilTest(); break;
+                case "audio": body = AudioTest(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -1432,6 +1433,32 @@ namespace V1Bridge.Ror
             yield return new WaitForSecondsRealtime(0.5f);
             Check("ULTRAKILL reported the gasoline and the monster got its overlay", Monsters.Oiled == 1, Monsters.Oiled + " oiled monsters after " + F(Now - t) + " s");
             yield return SnapRor("ror2-oiled");
+            yield return BackToTitle();
+        }
+
+        /// <summary>ULTRAKILL's sound is on: its volumes are the player's, its mixer is not faded out, and firing plays sounds.</summary>
+        IEnumerator AudioTest()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            yield return UkState();
+            string volumes = StateValue(stateReply, "volumes") ?? "?", audio = StateValue(stateReply, "audio") ?? "?";
+            metrics["uk_volumes"] = volumes;
+            metrics["uk_audio_idle"] = audio;
+            Check("ULTRAKILL took its volumes from the real settings", volumes.StartsWith("all") && !volumes.Contains("/sfx0/"), volumes);
+            var m = System.Text.RegularExpressions.Regex.Match(audio, @"mixer(-?[0-9.]+)dB");
+            float db = m.Success ? float.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture) : -999f;
+            Check("its sound-effects mixer is not faded out", db > -60f, audio);
+            Check("its listener is on", audio.Contains("listener") && !audio.Contains("listener0/") && !audio.Contains("PAUSED") && audio.Contains("listeners1"), audio);
+            V1Drive.Script = () => new V1Drive.Frame { buttons = 1 };
+            yield return new WaitForSecondsRealtime(0.25f);
+            yield return UkState();
+            V1Drive.Script = () => default;
+            string firing = StateValue(stateReply, "audio") ?? "?";
+            metrics["uk_audio_firing"] = firing;
+            var p = System.Text.RegularExpressions.Regex.Match(firing, @"playing(\d+)");
+            Check("firing plays sounds in ULTRAKILL", p.Success && int.Parse(p.Groups[1].Value) > 0, firing);
             yield return BackToTitle();
         }
 

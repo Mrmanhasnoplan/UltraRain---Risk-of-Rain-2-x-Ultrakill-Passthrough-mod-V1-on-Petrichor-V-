@@ -125,8 +125,64 @@ namespace V1Bridge.Uk
             // held still until Risk of Rain 2 says where V1 stands
             nm.rb.isKinematic = true;
             levelPrepared = true;
+            ApplyVolumes();
             Net.Send(Proto.Ready);
             Plugin.Log.LogInfo("level prepared, hid " + hidden + " renderers/colliders");
+        }
+
+        public string VolumeInfo = "unset";
+
+        /// <summary>ULTRAKILL's sound, at the player's own volumes. The bridge's save is new, and a new save's intro sets
+        /// sound effects and music to zero and fades the mixers out until the player has been through its sound
+        /// set-up, which the bridge skips: V1 would be silent. The volumes are read (only read) from the real
+        /// preferences every time and put back on the mixers.</summary>
+        void ApplyVolumes()
+        {
+            try
+            {
+                var prefs = MonoSingleton<PrefsManager>.Instance;
+                var mixer = MonoSingleton<AudioMixerController>.Instance;
+                string real = System.IO.Path.Combine(System.IO.Directory.GetParent(Application.dataPath).FullName, "Preferences", "Prefs.json");
+                string json = System.IO.File.Exists(real) ? System.IO.File.ReadAllText(real) : "";
+                float Real(string key, float fallback)
+                {
+                    var m = System.Text.RegularExpressions.Regex.Match(json, "\"" + key + "\"\\s*:\\s*([0-9.eE+-]+)");
+                    return m.Success && float.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out float v) ? Mathf.Clamp01(v) : fallback;
+                }
+                float all = Real("allVolume", 1f), sfx = Real("sfxVolume", 1f), music = Real("musicVolume", 0f);
+                // silent sound effects in the real settings would be a bridge with no sound at all: never that
+                if (sfx <= 0.001f) sfx = 1f;
+                if (all <= 0.001f) all = 1f;
+                prefs.SetFloat("allVolume", all);
+                prefs.SetFloat("sfxVolume", sfx);
+                prefs.SetFloat("musicVolume", music);
+                AudioListener.volume = all;
+                AudioListener.pause = false;
+                if (mixer != null)
+                {
+                    mixer.sfxVolume = sfx;
+                    mixer.SetSFXVolume(sfx);
+                    mixer.optionsMusicVolume = music;
+                    mixer.SetMusicVolume(music);
+                }
+                VolumeInfo = "all" + S(all) + "/sfx" + S(sfx) + "/music" + S(music);
+                Plugin.Log.LogInfo("volumes from the real preferences: " + VolumeInfo);
+            }
+            catch (Exception e)
+            {
+                VolumeInfo = "error";
+                Plugin.Log.LogWarning("volumes: " + e.Message);
+            }
+        }
+
+        static string AudioInfo()
+        {
+            int playing = 0;
+            foreach (var a in FindObjectsOfType<AudioSource>()) if (a.isPlaying) playing++;
+            float db = -999f;
+            var mixer = MonoSingleton<AudioMixerController>.Instance;
+            if (mixer != null && mixer.allSound != null) mixer.allSound.GetFloat("allVolume", out db);
+            return "listener" + S(AudioListener.volume) + (AudioListener.pause ? "PAUSED" : "") + "/mixer" + S(db) + "dB/playing" + playing + "/listeners" + FindObjectsOfType<AudioListener>().Length;
         }
 
         /// <summary>TP x y z yaw pitch: V1's feet. The first one switches V1 on.</summary>
