@@ -42,7 +42,7 @@ namespace V1Bridge.Ror
             Port = Config.Bind("Link", "Port", Proto.DefaultPort, "Loopback port UkBridge listens on.");
             UkHeight = Config.Bind("Performance", "UltrakillHeight", 720, "Height ULTRAKILL renders at (its width follows this window's shape). Lower is faster.");
             DamageCoefficient = Config.Bind("Balance", "DamageCoefficient", 3f, "RoR2 damage of one ULTRAKILL damage unit (a revolver shot), as a multiple of V1's damage stat. 3 = 300%.");
-            MouseScale = Config.Bind("Controls", "MouseScale", 1f, "Multiplies the mouse movement handed to ULTRAKILL, on top of ULTRAKILL's own sensitivity.");
+            MouseScale = Config.Bind("Controls", "MouseScale", 2f, "Multiplies the mouse movement handed to ULTRAKILL, on top of ULTRAKILL's own sensitivity.");
             IncomingDamage = Config.Bind("Balance", "IncomingDamage", 1f, "Multiplies the damage Risk of Rain 2 does to V1.");
             HideRorHud = Config.Bind("HUD", "HideRoR2HealthAndSkills", true, "Hide Risk of Rain 2's health bar and skill icons while playing V1 (ULTRAKILL's HUD shows them).");
             UkFps = Config.Bind("Performance", "UltrakillFpsCap", 120, "ULTRAKILL's frame rate cap.");

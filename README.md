@@ -52,8 +52,8 @@ that a copy kept in `profiles\ror2\cache` shows at once.
 
 - Keys and mouse are ULTRAKILL's, with ULTRAKILL's own binds (a copy of yours, taken on first run).
 - If you use E to swap weapons in ULTRAKILL make sure to change the interact button in risk of rain from E to something else.
-- Along with that in mod options under risk of options you can edit your mouse speed (MouseScale), as it's very slow on
-  default: the default is 1, and around 2 feels closer to ULTRAKILL's own.
+- Along with that in mod options under risk of options you can edit your mouse speed (MouseScale, 2 by default) if
+  turning feels too slow or too fast.
 - Risk of Rain 2 keeps **Interact** (chests, shrines, teleporter), **Equipment**, **Escape** and the scoreboard.
 - Damage: one ULTRAKILL damage unit (a revolver shot) is 300% of V1's RoR2 damage stat, so levels and damage items count.
   Kills are Risk of Rain 2's: gold, experience, on-kill items.
@@ -76,7 +76,7 @@ In game: **Settings → Mod Options → RorBridge** (or `profiles\ror2\BepInEx\c
 |---|---|---|
 | UltrakillHeight | 720 | Height ULTRAKILL renders at. The biggest performance lever: try 540 or 480 on a weak card. |
 | UltrakillFpsCap | 120 | ULTRAKILL's frame cap. |
-| MouseScale | 1 | Multiplies mouse movement, on top of ULTRAKILL's sensitivity. |
+| MouseScale | 2 | Multiplies mouse movement, on top of ULTRAKILL's sensitivity. |
 | DamageCoefficient | 3 | RoR2 damage of one ULTRAKILL damage unit, × V1's damage stat. |
 | IncomingDamage | 1 | Multiplies what RoR2 does to V1. |
 | HideRoR2HealthAndSkills | on | Hide RoR2's health bar and skill icons under ULTRAKILL's HUD. |
