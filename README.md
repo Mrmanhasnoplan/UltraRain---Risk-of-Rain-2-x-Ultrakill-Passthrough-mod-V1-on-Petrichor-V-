@@ -2,7 +2,7 @@
 
 A passthrough mod for Risk of Rain 2 and ULTRAKILL, allowing you to play as V1 on Petrichor V. All weapons are in the
 game and work, along with conduction and the Whiplash. Items also affect V1, although some items such as Soldier's
-Syringe don't. This mod will receive further updates like multiplayer in future.
+Syringe don't. This mod will receive further updates like multiplayer, sound and the ability to actually use jump pads/shrooms in future.
 
 It runs the real ULTRAKILL beside Risk of Rain 2 and draws it into RoR2's window: ULTRAKILL's own movement, weapons,
 arms, HUD, style meter and sounds. The RoR2 stage is ULTRAKILL's level and RoR2's monsters are its targets. Nothing of
@@ -50,6 +50,8 @@ very first time you pick V1 a placeholder figure stands there for about ten seco
 that a copy kept in `profiles\ror2\cache` shows at once.
 
 - Keys and mouse are ULTRAKILL's, with ULTRAKILL's own binds (a copy of yours, taken on first run).
+- If you use E to swap weapons in ULTRAKILL make sure to change the interact button in risk of rain from E to something else.
+- Along with that in mod options under risk of options you can edit your mouse speed, as it's very slow on default.
 - Risk of Rain 2 keeps **Interact** (chests, shrines, teleporter), **Equipment**, **Escape** and the scoreboard.
 - Damage: one ULTRAKILL damage unit (a revolver shot) is 300% of V1's RoR2 damage stat, so levels and damage items count.
   Kills are Risk of Rain 2's: gold, experience, on-kill items.
