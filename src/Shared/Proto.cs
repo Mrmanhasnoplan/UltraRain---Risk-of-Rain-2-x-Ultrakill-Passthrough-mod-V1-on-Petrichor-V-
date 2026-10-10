@@ -48,6 +48,7 @@ namespace V1Bridge
         public const string Ready = "READY";       // the Sandbox is stripped down to V1 and waiting for a TP
         public const string GeoDone = "GEODONE";   // GEODONE <colliders> <triangles> <ms> <ok|problem>
         public const string Probed = "PROBED";
+        public const string Oiled = "OILED";       // OILED <id> <0-10>: how soaked in gasoline that monster is (0: clean again)
         public const string Model = "MODEL";       // MODEL <path> <info> | MODEL none: V1's body, read out of this ULTRAKILL, for character select
         public const string Pull = "PULL";         // PULL <id> <x> <y> <z>: the Whiplash is dragging that monster; its feet are here now
         public const string PullEnd = "PULLEND";   // PULLEND <id> <vx> <vy> <vz>: let go, moving like this

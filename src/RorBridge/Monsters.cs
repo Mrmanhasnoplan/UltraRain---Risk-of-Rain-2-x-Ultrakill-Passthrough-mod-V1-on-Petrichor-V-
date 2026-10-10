@@ -140,8 +140,39 @@ namespace V1Bridge.Ror
             }
         }
 
+        static readonly Dictionary<int, TemporaryOverlayInstance> oil = new Dictionary<int, TemporaryOverlayInstance>();
+        public static int Oiled => oil.Count;
+
+        /// <summary>OILED id amount: ULTRAKILL's gasoline is on that monster. Risk of Rain 2 draws the monster, so the
+        /// soaking is shown here: its own dark goo overlay, for as long as ULTRAKILL says the fuel is there.</summary>
+        static void SetOiled(string[] a)
+        {
+            if (a.Length < 2) return;
+            int id = int.Parse(a[0]);
+            bool on = a[1] != "0";
+            if (oil.TryGetValue(id, out var had))
+            {
+                if (on) return;
+                try { had.RemoveFromCharacterModel(); had.Destroy(); } catch { }
+                oil.Remove(id);
+                return;
+            }
+            if (!on || !byId.TryGetValue(id, out var b) || b == null || b.modelLocator == null || b.modelLocator.modelTransform == null) return;
+            var model = b.modelLocator.modelTransform.GetComponent<CharacterModel>();
+            var mat = CharacterModel.TankerAccelerantGoo != null ? CharacterModel.TankerAccelerantGoo : CharacterModel.clayGooMaterial;
+            if (model == null || mat == null) return;
+            var overlay = TemporaryOverlayManager.AddOverlay(model.gameObject);
+            overlay.originalMaterial = mat;
+            overlay.animateShaderAlpha = false;
+            overlay.duration = 100000f;
+            overlay.destroyComponentOnEnd = true;
+            overlay.AddToCharacterModel(model);
+            oil[id] = overlay;
+        }
+
         public static void OnMessage(string cmd, string rest)
         {
+            if (cmd == Proto.Oiled) { SetOiled(rest.Split(' ')); return; }
             if (cmd == Proto.Pull || cmd == Proto.PullEnd) { Pulled(rest.Split(' '), cmd == Proto.PullEnd); return; }
             if (cmd != Proto.Damage) return;
             var v1 = V1Drive.Body;

@@ -80,6 +80,7 @@ namespace V1Bridge.Ror
                 case "conduction": body = Conduction(); break;
                 case "coins": body = CoinConduction(); break;
                 case "model": body = ModelTest(); break;
+                case "oil": body = OilTest(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -1407,6 +1408,30 @@ namespace V1Bridge.Ror
             }
             yield return SnapRor("ror2-lobby-v1");
             Check("a copy is kept for next time", File.Exists(Path.Combine(Plugin.ProfileDir, "cache", "v1model.bin")));
+            yield return BackToTitle();
+        }
+
+        /// <summary>A monster ULTRAKILL has soaked in gasoline is shown soaked in Risk of Rain 2.</summary>
+        IEnumerator OilTest()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            var guard = SpawnAhead("BeetleGuardMaster", 6f, false);
+            if (!Check("spawned a Beetle Guard", guard != null)) yield break;
+            yield return new WaitForSecondsRealtime(2.5f);
+            yield return AimAt(() => guard.corePosition);
+            yield return SnapRor("ror2-clean");
+            var model = guard.modelLocator.modelTransform.GetComponent<CharacterModel>();
+            UkLink.Send("TESTOIL " + guard.GetInstanceID());
+            float t = Now;
+            while (Monsters.Oiled == 0 && Now - t < 5f) yield return null;
+            yield return new WaitForSecondsRealtime(0.5f);
+            Check("ULTRAKILL reported the gasoline and the monster got its overlay", Monsters.Oiled == 1, Monsters.Oiled + " oiled monsters after " + F(Now - t) + " s");
+            yield return SnapRor("ror2-oiled");
             yield return BackToTitle();
         }
 

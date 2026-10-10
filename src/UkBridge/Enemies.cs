@@ -168,6 +168,7 @@ namespace V1Bridge.Uk
             {
                 RemoveProxy(proxies[id]);
                 proxies.Remove(id);
+                oilSent.Remove(id);
             }
         }
 
@@ -289,6 +290,28 @@ namespace V1Bridge.Uk
             cubeMesh = tmp.GetComponent<MeshFilter>().sharedMesh;
             Destroy(tmp);
             return cubeMesh;
+        }
+
+        readonly Dictionary<int, int> oilSent = new Dictionary<int, int>();
+        float nextOilCheck;
+
+        /// <summary>Which monsters are soaked in gasoline (after Ultracraft): Risk of Rain 2 draws them, so it has to be told.</summary>
+        void UpdateOil()
+        {
+            if (!levelPrepared || Time.unscaledTime < nextOilCheck) return;
+            nextOilCheck = Time.unscaledTime + 0.25f;
+            foreach (var kv in proxies)
+            {
+                var p = kv.Value;
+                if (p == null || p.eid == null || p.eid.flammables == null) continue;
+                float fuel = 0f;
+                foreach (var f in p.eid.flammables) if (f != null) fuel = Mathf.Max(fuel, f.fuel);
+                int amount = Mathf.Clamp(Mathf.CeilToInt(fuel * 2f), 0, 10);
+                oilSent.TryGetValue(kv.Key, out int was);
+                if (amount == was) continue;
+                oilSent[kv.Key] = amount;
+                Net.Send(Proto.Oiled + " " + kv.Key + " " + amount);
+            }
         }
 
         Water stageWater;

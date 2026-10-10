@@ -142,6 +142,11 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   (texture also as emission at 0.6) under the display prefab and any live display, 2.05 m tall, and hide the placeholder.
   The file is copied to `profiles\ror2\cache\v1model.bin` (git-ignored, never shipped) and loaded at start-up on later
   sessions, so the model shows before ULTRAKILL has started. The placeholder remains for a first-ever visit.
+- Oiled monsters: UkBridge checks every 0.25 s how much fuel each stand-in's `flammables` hold and sends
+  `OILED id 0-10` on change (after Ultracraft); RorBridge puts a `TemporaryOverlayInstance` with RoR2's own goo material
+  (`CharacterModel.TankerAccelerantGoo`, else `clayGooMaterial`) on the monster's model until the amount is 0. Looks only:
+  no RoR2 debuff. Gasoline on the ground is not drawn (ULTRAKILL paints it on the stand-in stage, which is discarded).
+  `TESTOIL id` (tests) calls `AddFlammable(1)` on a stand-in.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -179,6 +184,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-10 02:55 | oil (golemplains) | PASS (1 run) | `TESTOIL` on a Beetle Guard: overlay on 0.7 s later, monster visibly covered in dark goo in the screenshot |
 | 2026-10-10 02:50 | model | PASS (2 runs) | 9 parts, 6,441 vertices, 2 textures handed over 10.9 s after picking V1; display 2.05 m tall; second run showed the cached model 1.5 s after the pick, before ULTRAKILL was up |
 | 2026-10-10 02:42 | coins (golemplains) | PASS (1 run, after one failed run whose test coin was deleted for standing still) | two Beetle Guards 24 m apart (46 ULTRAKILL units, beyond the 30-unit reach): railcannon into 22 nails shocked only the first; with a coin midway the second took `zap` |
 | 2026-10-10 02:2x | conduction (golemplains) | every check passed in at least one of 3 runs, never all in the same run | Jumpstart cable: `zapper` on the first Beetle Guard, `zap` on the second (2 of 3 runs; the third never got the cable on). Electric railcannon into 212 stuck nails: `zap` on the second. Water (monsters forced wet, no nails): `zap` on the second. golemplains has 2 Water-layer colliders |
@@ -215,6 +221,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - The Whiplash pull starts when the hook key is released (ULTRAKILL's rule); a pulled monster ignores RoR2 collision while dragged. Flying monsters without a CharacterMotor are moved by transform and untested.
 - The user's bridge config currently has DamageCoefficient = 1 and MouseScale = 2.1 (set through the in-game menu, so that menu works).
 - Water conduction was only tested with monsters flagged wet by the test, not standing in real stage water; whether RoR2's Water-layer colliders sit where the visible water is has not been checked on any stage. V1 standing in water while shocking it (ULTRAKILL shocks V1 too) is untested.
+- The oil overlay was tested with the test hook, not the Firestarter's spray; its removal when the fuel burns off or runs out, and whether burning itself shows and damages, are untested. Gasoline on the environment is not shown.
 - Coin conduction was tested with a coin spawned by the test hook, not one thrown by the Marksman; a thrown coin is the same prefab, but the throw itself was not scripted.
 - Magnets (Attractor nailgun) as conductors are implemented by the same code path but untested.
 - The `conduction` scenario's weapon switching is scripted with number keys and depends on which variant ULTRAKILL had out last; the Jumpstart step failed 1 run in 3.

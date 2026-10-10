@@ -37,6 +37,7 @@ namespace V1Bridge.Uk
             }
             UpdateLevel();
             UpdateModelExport();
+            UpdateOil();
             InjectInput();
             SendPose();
             // out of sight from the first frame: off-screen, never minimised (a minimised Unity window stops drawing)
@@ -117,6 +118,12 @@ namespace V1Bridge.Uk
                 case Proto.Parried:
                     MeleeParried(rest);
                     break;
+                case "TESTOIL":
+                {
+                    // (tests) gasoline on that monster, as the Firestarter leaves it
+                    if (int.TryParse(rest.Trim(), out int oid) && proxies.TryGetValue(oid, out var op) && op != null && op.eid != null) op.eid.AddFlammable(1f);
+                    break;
+                }
                 case Proto.TestCoin:
                 {
                     // a real coin from the revolver's own prefab, drifting slowly upward (a coin that stops moving is removed)
