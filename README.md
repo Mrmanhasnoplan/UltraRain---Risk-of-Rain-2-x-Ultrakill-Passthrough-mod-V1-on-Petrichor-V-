@@ -36,6 +36,10 @@ powershell -ExecutionPolicy Bypass -File tools\Play.ps1
 Singleplayer → pick **V1** (the last survivor) → wait a few seconds while ULTRAKILL loads in the background → start.
 Picking any other survivor is plain Risk of Rain 2. ULTRAKILL closes when Risk of Rain 2 does.
 
+V1's model in character select is read out of your own ULTRAKILL while it runs (nothing of it ships with the mod). The
+very first time you pick V1 a placeholder figure stands there for about ten seconds until ULTRAKILL has loaded; after
+that a copy kept in `profiles\ror2\cache` shows at once.
+
 - Keys and mouse are ULTRAKILL's, with ULTRAKILL's own binds (a copy of yours, taken on first run).
 - Risk of Rain 2 keeps **Interact** (chests, shrines, teleporter), **Equipment**, **Escape** and the scoreboard.
 - Damage: one ULTRAKILL damage unit (a revolver shot) is 300% of V1's RoR2 damage stat, so levels and damage items count.

@@ -53,6 +53,7 @@ namespace V1Bridge.Ror
             RoR2.RoR2Application.isModded = true;
 
             V1Survivor.Register();
+            V1Model.LoadCache();
             UkHeight.SettingChanged += (s, e) => V1Drive.SendSize();
             UkFps.SettingChanged += (s, e) => V1Drive.SendSize();
             if (BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey(SettingsMenu.RiskOfOptionsGuid))
@@ -80,6 +81,7 @@ namespace V1Bridge.Ror
             UkLink.OnMessage += V1Drive.OnMessage;
             UkLink.OnMessage += Monsters.OnMessage;
             UkLink.OnMessage += Parry.OnMessage;
+            UkLink.OnMessage += V1Model.OnMessage;
             UkLink.Start(Plugin.Port.Value);
             string test = Plugin.Arg(TestMode.ArgName);
             if (test != null) gameObject.AddComponent<TestMode>().Begin(test, Plugin.Arg(TestMode.ArgOut));

@@ -134,6 +134,14 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - Coins conduct with no extra code: ULTRAKILL's `EnemyIdentifier.Zap` relays through every `Zappable` (coins) within
   30 units in line of sight, and the stand-ins use that same `Zap`. `TESTCOIN x y z` (tests only) spawns one of the
   revolver's own coins drifting upward at a point (a coin slower than 1 unit/s is deleted by ULTRAKILL).
+- V1's model in character select comes from the local ULTRAKILL at runtime (`UkBridge/ModelExport.cs` → `V1Model.cs`):
+  once its level is ready UkBridge instantiates the platformer V1 (`PlayerTracker.platformerPlayerPrefab`, the source
+  Ultracraft uses), lets its animator pose it for 0.6 s, bakes each SkinnedMeshRenderer, reads the textures back
+  through a RenderTexture, and writes positions/normals/UVs/triangles (normalised to one unit tall, feet at the origin)
+  plus PNGs to `%TEMP%\v1bridge_model.bin`; `MODEL <path>` has RorBridge build meshes with HGStandard materials
+  (texture also as emission at 0.6) under the display prefab and any live display, 2.05 m tall, and hide the placeholder.
+  The file is copied to `profiles\ror2\cache\v1model.bin` (git-ignored, never shipped) and loaded at start-up on later
+  sessions, so the model shows before ULTRAKILL has started. The placeholder remains for a first-ever visit.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -171,6 +179,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-10 02:50 | model | PASS (2 runs) | 9 parts, 6,441 vertices, 2 textures handed over 10.9 s after picking V1; display 2.05 m tall; second run showed the cached model 1.5 s after the pick, before ULTRAKILL was up |
 | 2026-10-10 02:42 | coins (golemplains) | PASS (1 run, after one failed run whose test coin was deleted for standing still) | two Beetle Guards 24 m apart (46 ULTRAKILL units, beyond the 30-unit reach): railcannon into 22 nails shocked only the first; with a coin midway the second took `zap` |
 | 2026-10-10 02:2x | conduction (golemplains) | every check passed in at least one of 3 runs, never all in the same run | Jumpstart cable: `zapper` on the first Beetle Guard, `zap` on the second (2 of 3 runs; the third never got the cable on). Electric railcannon into 212 stuck nails: `zap` on the second. Water (monsters forced wet, no nails): `zap` on the second. golemplains has 2 Water-layer colliders |
 | 2026-10-10 01:3x | whiplash (golemplains) | PASS (1 run) | Lemurian (100 kg, light) dragged 14.2 m → 0.27 m from V1 with V1 not moving; Beetle Guard (300 kg, heavy) stayed put and V1 flew 16.1 m → 1.9 m; hook hit x0.2 arrived |
@@ -213,7 +222,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   sliders, changed a setting mid-run, or run `tools\Install.ps1` end to end on a clean checkout (its parts were run separately).
 - No performance options beyond ULTRAKILL's resolution and frame cap (no low-end preset, no lock-step, no D3D11 shared texture);
   the colour/coverage join still costs ~5 ms a frame on a worker thread.
-- Character select still shows the primitive placeholder; V1's own model from the local install is not attempted yet.
+- V1's character-select model is a static pose (no idle animation), and the survivor icon and the in-run body are unchanged (drawn icon; hidden Commando body).
 - RoR2's chat lines and tutorial hints draw over ULTRAKILL's weapon panel (bottom left).
 - Key overlaps not resolved: RoR2's Equipment key (Q by default) is taken from ULTRAKILL (its "last weapon"), and its Interact key (E) from ULTRAKILL's "change variation"; RoR2 pings and sprint are not routed at all.
 - Not tested: revives (Dio's Best Friend), the teleporter boss fight to completion, the bazaar, void fields, Mithrix, and any stage other than golemplains and blackbeach.

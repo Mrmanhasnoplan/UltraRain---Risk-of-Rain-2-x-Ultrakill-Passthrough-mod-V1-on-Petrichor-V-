@@ -79,6 +79,7 @@ namespace V1Bridge.Ror
                 case "whiplash": body = Whiplash(); break;
                 case "conduction": body = Conduction(); break;
                 case "coins": body = CoinConduction(); break;
+                case "model": body = ModelTest(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -1372,6 +1373,40 @@ namespace V1Bridge.Ror
             Check("with the coin: the first is shocked", WasHit(a, "railcannon"), HitsOn(a));
             Check("with the coin: the shock reaches the second through it", WasHit(b, "zap", "aftershock"), "second was hit by: " + HitsOn(b));
             yield return SnapUk("uk");
+            yield return BackToTitle();
+        }
+
+        /// <summary>Character select shows V1's own model, read out of the running ULTRAKILL (or kept from last time).</summary>
+        IEnumerator ModelTest()
+        {
+            yield return ToTitle();
+            if (failed) yield break;
+            metrics["model_from_cache_at_start"] = (V1Model.Parts > 0 && V1Model.FromCache).ToString();
+            yield return ToLobby();
+            if (failed) yield break;
+            yield return Pick(V1Survivor.Def);
+            yield return new WaitForSecondsRealtime(1.5f);
+            yield return SnapRor("ror2-lobby-before");
+            float t = Now;
+            while ((V1Model.Parts == 0 || V1Model.FromCache) && V1Model.Problem == null && UkLauncher.Problem == null && Now - t < 150f) yield return null;
+            metrics["model_seconds_after_pick"] = F(Now - t);
+            metrics["model"] = V1Model.Parts + " parts, " + V1Model.Vertices + " vertices, " + V1Model.Textures + " textures";
+            if (!Check("ULTRAKILL handed over V1's model", V1Model.Parts > 0 && !V1Model.FromCache, V1Model.Problem ?? metrics["model"])) yield break;
+            yield return new WaitForSecondsRealtime(1.5f);
+            Transform shown = null;
+            foreach (var tr in FindObjectsOfType<Transform>()) if (tr.name == "V1 model" && tr.gameObject.activeInHierarchy) shown = tr;
+            if (Check("the display in character select carries it", shown != null))
+            {
+                var b = new Bounds(shown.position, Vector3.zero);
+                int renderers = 0;
+                foreach (var r in shown.GetComponentsInChildren<Renderer>()) { b.Encapsulate(r.bounds); renderers++; }
+                var placeholder = shown.parent.Find("Model");
+                metrics["model_bounds"] = b.size.ToString();
+                Check("it stands about as tall as a survivor", b.size.y > 1.6f && b.size.y < 2.6f, F(b.size.y) + " m, " + renderers + " renderers");
+                Check("the placeholder is gone", placeholder == null || !placeholder.gameObject.activeInHierarchy);
+            }
+            yield return SnapRor("ror2-lobby-v1");
+            Check("a copy is kept for next time", File.Exists(Path.Combine(Plugin.ProfileDir, "cache", "v1model.bin")));
             yield return BackToTitle();
         }
 

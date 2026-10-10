@@ -36,6 +36,7 @@ namespace V1Bridge.Uk
                 catch (Exception e) { Plugin.Log.LogWarning("handle '" + line + "': " + e); }
             }
             UpdateLevel();
+            UpdateModelExport();
             InjectInput();
             SendPose();
             // out of sight from the first frame: off-screen, never minimised (a minimised Unity window stops drawing)
@@ -77,6 +78,7 @@ namespace V1Bridge.Uk
             {
                 case "CONNECTED":
                     Plugin.Log.LogInfo("Risk of Rain 2 connected");
+                    modelSent = false;
                     break;
                 case "DISCONNECTED":
                     Plugin.Log.LogInfo("Risk of Rain 2 disconnected");
