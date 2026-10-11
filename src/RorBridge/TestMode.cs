@@ -2189,7 +2189,9 @@ namespace V1Bridge.Ror
             if (!Check("Risk of Rain 2 knows where the coin is", Coins.Listed >= 1)) yield break;
             hurts0 = V1HealthLink.HurtsSent;
             hp0 = V1Drive.UkHp;
-            int taken0 = Coins.Intercepted;
+            int taken0 = Coins.Intercepted, hitsBefore = Monsters.HitsApplied;
+            float guardHp0 = guard.healthComponent.combinedHealth;
+            Monsters.HitLog.Clear();
             MonsterShot(guard, v1, dmg);
             yield return new WaitForSecondsRealtime(0.25f);
             int hpSoon = V1Drive.UkHp;
@@ -2197,9 +2199,11 @@ namespace V1Bridge.Ror
             string hits = StateValue(stateReply, "coinhits") ?? "?";
             Check("the coin took the shot", Coins.Intercepted == taken0 + 1 && hits == "1", (Coins.Intercepted - taken0) + " taken here, ULTRAKILL counts " + hits);
             Check("the shot itself never reached V1", V1HealthLink.HurtsSent == hurts0 && hpSoon == hp0, "HURT sent " + (V1HealthLink.HurtsSent - hurts0) + ", ULTRAKILL HP " + hp0 + " -> " + hpSoon + " a quarter of a second on");
-            // then ULTRAKILL's coin does what it does with an enemy's shot
+            // then the coin sends it on, as it does a shot of V1's: into the nearest monster (here, the one that fired)
             yield return new WaitForSecondsRealtime(2f);
-            metrics["after_the_coin"] = "ULTRAKILL HP " + hp0 + " -> " + V1Drive.UkHp + " two seconds on (the coin's own shot at V1, if V1 did not shoot it first), coins left " + Coins.Listed;
+            metrics["after_the_coin"] = "the Beetle Guard was hit by: " + HitsOn(guard) + " (" + Monsters.LastHit + "), its health " + F(guardHp0) + " -> " + F(guard.healthComponent.combinedHealth) + "; ULTRAKILL HP " + hp0 + " -> " + V1Drive.UkHp + " two seconds on, coins left " + Coins.Listed;
+            Check("the coin sent the shot into the nearest monster", Monsters.HitsApplied > hitsBefore && Monsters.LastHitOn == guard && guard.healthComponent.combinedHealth < guardHp0, metrics["after_the_coin"]);
+            Check("V1 was not hurt by any of it", V1Drive.UkHp == hp0 && V1HealthLink.HurtsSent == hurts0, metrics["after_the_coin"]);
             Check("the coin is spent", Coins.Listed == 0, metrics["after_the_coin"]);
             yield return SnapUk("uk");
             Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);

@@ -16,6 +16,7 @@ namespace V1Bridge.Uk
 
         public int ShotsBlown, CoinHits;
         readonly Dictionary<int, float> blownAt = new Dictionary<int, float>();
+        static readonly HarmonyLib.AccessTools.FieldRef<Coin, bool> CoinLive = HarmonyLib.AccessTools.FieldRefAccess<Coin, bool>("checkingSpeed");
         readonly System.Text.StringBuilder coinLine = new System.Text.StringBuilder(128);
         bool coinsSent;
 
@@ -32,7 +33,8 @@ namespace V1Bridge.Uk
             {
                 foreach (var coin in tracker.revolverCoinsList)
                 {
-                    if (coin == null || coin.shot || !coin.gameObject.activeInHierarchy) continue;
+                    // not in its first tenth of a second either: until then ULTRAKILL's coin takes no shot at all
+                    if (coin == null || coin.shot || !coin.gameObject.activeInHierarchy || !CoinLive(coin)) continue;
                     var p = coin.transform.position;
                     coinLine.Append(coin.GetInstanceID()).Append(',').Append(S(p.x)).Append(',').Append(S(p.y)).Append(',').Append(S(p.z)).Append(';');
                     n++;
@@ -44,9 +46,10 @@ namespace V1Bridge.Uk
             Net.Send(coinLine.ToString());
         }
 
-        /// <summary>COINHIT id: a Risk of Rain 2 monster's hitscan shot ran into that coin. ULTRAKILL does with it what it
-        /// does when one of its own enemies shoots a coin: the coin takes the shot, passes it on through any other
-        /// coins, flashes, and half a second later fires at V1, unless V1 shoots the coin first and makes the shot its own.</summary>
+        /// <summary>COINHIT id: a Risk of Rain 2 monster's hitscan shot ran into that coin. The coin sends it on as it
+        /// sends on a shot of V1's own (ULTRAKILL's ricoshot, unchanged): through any other coins, then into the nearest
+        /// monster. (ULTRAKILL's rule for a coin shot by one of its own enemies is another: that coin fires at V1 half a
+        /// second later, Coin.DelayedEnemyReflect. The owner chose the ricoshot, 2026-10-11.)</summary>
         void CoinHit(string rest)
         {
             if (!levelPrepared || !int.TryParse(rest.Trim(), out int id)) return;
@@ -57,7 +60,7 @@ namespace V1Bridge.Uk
                 if (coin == null || coin.GetInstanceID() != id) continue;
                 try
                 {
-                    coin.DelayedEnemyReflect();
+                    coin.DelayedReflectRevolver(coin.transform.position);
                     CoinHits++;
                 }
                 catch (Exception e) { Plugin.Log.LogWarning("coin: " + e.Message); }
