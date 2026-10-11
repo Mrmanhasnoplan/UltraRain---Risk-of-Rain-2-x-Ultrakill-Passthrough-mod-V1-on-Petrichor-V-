@@ -49,6 +49,24 @@ namespace V1Bridge.Ror
         static RawImage overlay;
         static readonly List<Behaviour> disabled = new List<Behaviour>();
         static CharacterModel hiddenModel;
+        static readonly List<Renderer> hiddenParts = new List<Renderer>(), partScratch = new List<Renderer>();
+        static float nextPartSweep;
+        /// <summary>Renderers on V1's hidden body switched off by the sweep (item displays, mostly), for the tests.</summary>
+        public static int HiddenParts => hiddenParts.Count;
+
+        /// <summary>For the tests: what the sweep switched off, as "item display/renderer".</summary>
+        public static string HiddenPartNames()
+        {
+            var names = new List<string>();
+            foreach (var r in hiddenParts)
+            {
+                if (r == null) continue;
+                var display = r.GetComponentInParent<ItemDisplay>();
+                string n = (display != null ? display.name.Replace("(Clone)", "") + "/" : "") + r.name + ":" + r.GetType().Name;
+                if (!names.Contains(n)) names.Add(n);
+            }
+            return string.Join(", ", names.ToArray());
+        }
         static int inputSeq;
 
         /// <summary>V1's RoR2 body while ULTRAKILL is driving it.</summary>
@@ -157,6 +175,25 @@ namespace V1Bridge.Ror
             Parry.Tick(b);
             Frames.Update();
             ShowOverlay(user);
+            HideBodyParts();
+        }
+
+        /// <summary>Nothing on V1's hidden body is drawn: the view is ULTRAKILL's, from inside it. RoR2 only tells an item's
+        /// display to hide when the model's visibility changes, so one picked up while the model is already hidden stays
+        /// in sight, and particles, trails and the like on a display are never told at all. Whatever is drawing under
+        /// the model is switched off here, and back on when the bridge lets go of the body.</summary>
+        static void HideBodyParts()
+        {
+            if (hiddenModel == null || Time.time < nextPartSweep) return;
+            nextPartSweep = Time.time + 0.1f;
+            hiddenModel.GetComponentsInChildren(false, partScratch);
+            foreach (var r in partScratch)
+            {
+                if (!r.enabled) continue;
+                r.enabled = false;
+                hiddenParts.Add(r);
+            }
+            partScratch.Clear();
         }
 
         /// <summary>A V1 run has a body and ULTRAKILL is waiting: ULTRAKILL's world is laid over the stage with its origin
@@ -218,6 +255,9 @@ namespace V1Bridge.Ror
             hiddenHud.Clear();
             if (hiddenModel != null) hiddenModel.invisibilityCount--;
             hiddenModel = null;
+            foreach (var r in hiddenParts) if (r != null) r.enabled = true;
+            hiddenParts.Clear();
+            nextPartSweep = 0f;
             if (rig != null && rig.hasOverride) rig.SetOverrideCam(null, 0f);
             rig = null;
             if (overlay != null) UnityEngine.Object.Destroy(overlay.transform.parent.gameObject);

@@ -86,6 +86,7 @@ namespace V1Bridge.Ror
                 case "jumppad": body = JumpPadTest(); break;
                 case "outofbounds": body = OutOfBoundsTest(); break;
                 case "ping": body = PingTest(); break;
+                case "items": body = ItemsHidden(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -1639,6 +1640,68 @@ namespace V1Bridge.Ror
             metrics["ground_ping"] = pinger.currentPing.origin + ", " + F(off) + " m from where V1 aimed";
             Check("the ground V1 looks at is pinged", V1Drive.PingsSent == pings0 + 1 && pinger.currentPing.active && pinger.currentPing.targetGameObject == null && off < 1.5f, metrics["ground_ping"]);
             yield return SnapRor("ror2-ping-ground");
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
+            yield return BackToTitle();
+        }
+
+        /// <summary>Items picked up as V1 are not drawn on its hidden body (the view is from inside it).</summary>
+        IEnumerator ItemsHidden()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            var model = v1.modelLocator != null ? v1.modelLocator.modelTransform : null;
+            if (!Check("V1's body has a model", model != null)) yield break;
+            Func<int> drawn = () =>
+            {
+                int n = 0;
+                foreach (var r in model.GetComponentsInChildren<Renderer>()) if (r.enabled) n++;
+                return n;
+            };
+            Check("nothing of the body is drawn before any item", drawn() == 0, drawn() + " renderers on");
+            int hidden0 = V1Drive.HiddenParts;
+            foreach (var item in new[] { RoR2Content.Items.Syringe, RoR2Content.Items.Bear, RoR2Content.Items.Hoof, RoR2Content.Items.CritGlasses, RoR2Content.Items.Mushroom, RoR2Content.Items.Behemoth, RoR2Content.Items.IceRing, RoR2Content.Items.FireRing })
+                v1.inventory.GiveItem(item, 1);
+            yield return new WaitForSecondsRealtime(1.5f);
+            int displays = model.GetComponentsInChildren<ItemDisplay>().Length;
+            metrics["item_displays_on_body"] = displays.ToString();
+            metrics["renderers_switched_off_for_items"] = (V1Drive.HiddenParts - hidden0).ToString();
+            metrics["renderers_still_on"] = drawn().ToString();
+            Check("the items have displays on the body", displays >= 4, displays + " displays");
+            Check("none of them is drawn", drawn() == 0, drawn() + " renderers on, " + (V1Drive.HiddenParts - hidden0) + " switched off by the bridge");
+            // looking down at where the body is
+            Vector3 feet = V1Drive.ToRor(V1Drive.Latest.feet);
+            Vector3 down = feet + Quaternion.Euler(0f, V1Drive.Latest.yaw, 0f) * Vector3.forward * 0.4f;
+            yield return AimAt(() => down);
+            yield return SnapRor("ror2-looking-down");
+
+            // every item in the game at once: whatever any of them puts on the body
+            int given = 0;
+            string lastGiven = "none";
+            foreach (var def in ItemCatalog.allItemDefs)
+            {
+                // not the lunar ones: they turn the run inside out, which is not what is being looked at
+                if (def == null || def.hidden || def.tier == ItemTier.NoTier || def.tier == ItemTier.Lunar) continue;
+                if (v1 == null || model == null) { metrics["body_gone_after"] = lastGiven; break; }
+                try { v1.inventory.GiveItem(def, 1); given++; lastGiven = def.name; }
+                catch (Exception e) { metrics["could_not_give_" + def.name] = e.GetType().Name; }
+            }
+            if (!Check("the body took the items", v1 != null && model != null, "last item given: " + lastGiven)) yield break;
+            yield return new WaitForSecondsRealtime(4f);
+            int followers = 0;
+            foreach (var f in model.GetComponentsInChildren<ItemFollower>()) if (f.followerInstance != null) followers++;
+            metrics["all_items_given"] = given.ToString();
+            metrics["all_items_displays"] = model.GetComponentsInChildren<ItemDisplay>().Length.ToString();
+            metrics["all_items_followers_alive"] = followers.ToString();
+            metrics["all_items_switched_off_by_bridge"] = V1Drive.HiddenPartNames();
+            Check("with every item: nothing on the body is drawn", drawn() == 0 && followers == 0, drawn() + " renderers on, " + followers + " followers floating, " + model.GetComponentsInChildren<ItemDisplay>().Length + " displays");
+            yield return SnapRor("ror2-all-items-down");
+            Vector3 ahead = V1Drive.ToRor(V1Drive.Latest.eye) + Quaternion.Euler(0f, V1Drive.Latest.yaw, 0f) * Vector3.forward * 10f;
+            yield return AimAt(() => ahead);
+            yield return SnapRor("ror2-all-items-ahead");
             Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
             yield return BackToTitle();
         }

@@ -174,6 +174,11 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   controller's own `PingerController.AttemptPing` with a ray from the eye and direction of the ULTRAKILL frame on screen
   (the rig has an override camera, so RoR2 does not re-aim the ray). Mouse buttons bound to RoR2's three actions are now
   masked out of `IN` as their keys already were (`InputCapture.keptButtons`).
+- Nothing on V1's hidden body is drawn: RoR2 hides an item display's listed renderers itself when the model is invisible
+  (also for items picked up later), but not what a display carries outside that list (particles, decals, a few meshes),
+  nor the body's own footstep dust and jet flames. `V1Drive.HideBodyParts` switches off every enabled renderer under the
+  model every 0.1 s and puts them back on disengage. Effects that are not under the model (wards, bubbles and auras
+  round the body, followers, drones) are RoR2's world and stay.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -215,6 +220,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-11 | items (golemplains) | PASS (1 run of the final version, 24/24, 0 real files changed) | 8 common items: 9 displays, RoR2 hid all of them itself. Every non-lunar item (191 given, 165 displays): 0 renderers left on, 0 followers; the bridge switched off 17 that RoR2 had left on (Plasma Shrimp's mesh, Tooth necklace decal, H3AD-5T, Chronic Expansion, Elusive Antlers particles, footstep dust, jet flames...). The run logs 1 RoR2 exception from its item-notification queue, caused by the test handing out 191 items in one frame. Screenshots with every item are too full of wards, bubbles and allies to judge by eye |
 | 2026-10-11 | ping (golemplains) | PASS (1 run, 22/22, 0 real files changed, 0 exceptions) | key held 0.5 s = 1 ping; Beetle Guard 8 m ahead pinged as target; ground 6 m ahead pinged 0 m from the aim point; held back from ULTRAKILL on this profile: T, Q, middle mouse. Scripted input: the real middle-mouse press was not exercised |
 | 2026-10-10 | audio (golemplains) | PASS (1 run) | volumes all 0.52 / sfx 0.17 / music 0 (the real settings); SFX mixer at -15.4 dB, one listener, 3 sources playing idle and 4 while firing. Audibility itself cannot be checked by the test |
 | 2026-10-10 | blast (golemplains) | PASS (2 runs; the first, before de-duplicating, threw a Lemurian 37 m up) | zero-damage blast 1.5 m from a monster: Lemurian (100 kg) up 4.4 m; Beetle Guard (300 kg) up 0.8 m; neither hurt. The distances along the ground (33 m, 10 m) are inflated: test monsters have no acceleration, so they do not brake |
