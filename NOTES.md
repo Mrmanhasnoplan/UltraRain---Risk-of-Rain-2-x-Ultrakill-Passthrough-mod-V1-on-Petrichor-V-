@@ -170,6 +170,10 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   V1's body (the stage's OutOfBounds `MapZone` uses it, with `Run.FindSafeTeleportPosition`) as a `TP` to ULTRAKILL,
   and the body is held where RoR2 put it until V1 is within 4 m of it or 1.5 s pass, so it is not dragged back out and
   teleported again. The older "30 m below the stage's bounds → back to the start" fallback is still there.
+- Ping: RoR2's Ping action is read from Rewired like Interact and Equipment; a press (not a hold) calls the silenced
+  controller's own `PingerController.AttemptPing` with a ray from the eye and direction of the ULTRAKILL frame on screen
+  (the rig has an override camera, so RoR2 does not re-aim the ray). Mouse buttons bound to RoR2's three actions are now
+  masked out of `IN` as their keys already were (`InputCapture.keptButtons`).
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -211,6 +215,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-11 | ping (golemplains) | PASS (1 run, 22/22, 0 real files changed, 0 exceptions) | key held 0.5 s = 1 ping; Beetle Guard 8 m ahead pinged as target; ground 6 m ahead pinged 0 m from the aim point; held back from ULTRAKILL on this profile: T, Q, middle mouse. Scripted input: the real middle-mouse press was not exercised |
 | 2026-10-10 | audio (golemplains) | PASS (1 run) | volumes all 0.52 / sfx 0.17 / music 0 (the real settings); SFX mixer at -15.4 dB, one listener, 3 sources playing idle and 4 while firing. Audibility itself cannot be checked by the test |
 | 2026-10-10 | blast (golemplains) | PASS (2 runs; the first, before de-duplicating, threw a Lemurian 37 m up) | zero-damage blast 1.5 m from a monster: Lemurian (100 kg) up 4.4 m; Beetle Guard (300 kg) up 0.8 m; neither hurt. The distances along the ground (33 m, 10 m) are inflated: test monsters have no acceleration, so they do not brake |
 | 2026-10-10 | jumppad (wispgraveyard, a third stage) | PASS (1 run) | pad velocity (51.3, 42.2, -2.6), time 1.5 s: V1 rose 29.4 m (RoR2 apex 29.7 m) and came down 79.7 m along (pad aims 77.1 m), 1.9 s in the air; body alive, 0 exceptions |
@@ -264,7 +269,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   the colour/coverage join still costs ~5 ms a frame on a worker thread.
 - V1's character-select model is a static pose (no idle animation), and the survivor icon and the in-run body are unchanged (drawn icon; hidden Commando body).
 - RoR2's chat lines and tutorial hints draw over ULTRAKILL's weapon panel (bottom left).
-- Key overlaps not resolved: RoR2's Equipment key (Q by default) is taken from ULTRAKILL (its "last weapon"), and its Interact key (E) from ULTRAKILL's "change variation"; RoR2 pings and sprint are not routed at all.
+- Key overlaps not resolved: RoR2's Equipment key (Q by default) is taken from ULTRAKILL (its "last weapon"), and its Interact key (E) from ULTRAKILL's "change variation"; RoR2's Ping bind (middle mouse) is taken too; RoR2 sprint is not routed at all.
 - Not tested: revives (Dio's Best Friend), the teleporter boss fight to completion, the bazaar, void fields, Mithrix, and any stage other than golemplains and blackbeach.
 - RoR2 instant-kill effects cannot kill V1 (every hit is NonLethal on the RoR2 side). Out of bounds was tested by dropping V1 below one stage's play area; walking off an edge and other zone types (kick-out zones, kill zones) are untested.
 - Mouse sensitivity mapping (Rewired counts → ULTRAKILL look) is untested by a human.

@@ -85,6 +85,7 @@ namespace V1Bridge.Ror
                 case "blast": body = BlastTest(); break;
                 case "jumppad": body = JumpPadTest(); break;
                 case "outofbounds": body = OutOfBoundsTest(); break;
+                case "ping": body = PingTest(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -1591,6 +1592,54 @@ namespace V1Bridge.Ror
             Check("RoR2's body is with V1", Vector3.Distance(v1.footPosition, now) < 0.5f, F(Vector3.Distance(v1.footPosition, now)) + " m apart");
             Check("V1 was not hurt and the run goes on", V1Drive.UkHp >= hp0 - 1 && Run.instance != null && !Run.instance.isGameOverServer && v1.healthComponent.alive, "ULTRAKILL HP " + hp0 + " -> " + V1Drive.UkHp);
             yield return SnapRor("ror2-put-back");
+            yield return BackToTitle();
+        }
+
+        /// <summary>Risk of Rain 2's ping works for V1: on a monster, on the ground, once per press.</summary>
+        IEnumerator PingTest()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var user = LocalUserManager.GetFirstLocalUser();
+            var v1 = user.cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            var pinger = user.cachedMasterController != null ? user.cachedMasterController.pingerController : null;
+            if (!Check("the player has a pinger", pinger != null)) yield break;
+            // the real binds, read once the way a real frame reads them
+            InputCapture.Read(user);
+            metrics["kept_from_ultrakill"] = InputCapture.KeptInfo();
+
+            // 1. a monster
+            var guard = SpawnAhead("BeetleGuardMaster", 8f, false);
+            if (!Check("spawned a Beetle Guard", guard != null)) yield break;
+            yield return new WaitForSecondsRealtime(2.5f);
+            yield return AimAt(() => guard.corePosition);
+            int pings0 = V1Drive.PingsSent;
+            // held for half a second: still one ping
+            yield return Tap(new V1Drive.Frame { ping = true }, 0.5f);
+            yield return new WaitForSecondsRealtime(0.5f);
+            var target = pinger.currentPing.targetGameObject;
+            Check("one press is one ping, however long it is held", V1Drive.PingsSent == pings0 + 1, (V1Drive.PingsSent - pings0) + " pings");
+            Check("the monster V1 looks at is pinged", pinger.currentPing.active && target == guard.gameObject, pinger.currentPing.active ? "target " + (target != null ? target.name : "none") + " at " + pinger.currentPing.origin : "no ping");
+            yield return SnapRor("ror2-ping-monster");
+            guard.healthComponent.Suicide();
+            yield return new WaitForSecondsRealtime(1.5f);
+
+            // 2. the ground
+            Vector3 feet = V1Drive.ToRor(V1Drive.Latest.feet);
+            Vector3 spot = feet + Quaternion.Euler(0f, V1Drive.Latest.yaw, 0f) * Vector3.forward * 6f;
+            if (Physics.Raycast(spot + Vector3.up * 20f, Vector3.down, out var ground, 60f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore)) spot = ground.point;
+            yield return AimAt(() => spot);
+            pings0 = V1Drive.PingsSent;
+            yield return Tap(new V1Drive.Frame { ping = true });
+            yield return new WaitForSecondsRealtime(0.5f);
+            float off = Vector3.Distance(pinger.currentPing.origin, spot);
+            metrics["ground_ping"] = pinger.currentPing.origin + ", " + F(off) + " m from where V1 aimed";
+            Check("the ground V1 looks at is pinged", V1Drive.PingsSent == pings0 + 1 && pinger.currentPing.active && pinger.currentPing.targetGameObject == null && off < 1.5f, metrics["ground_ping"]);
+            yield return SnapRor("ror2-ping-ground");
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
             yield return BackToTitle();
         }
 

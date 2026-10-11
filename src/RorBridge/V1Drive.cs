@@ -237,10 +237,25 @@ namespace V1Bridge.Ror
             public int buttons;
             public KeyCode[] keys;
             /// <summary>Risk of Rain 2's own actions, which stay RoR2's: their keys are not passed to ULTRAKILL.</summary>
-            public bool interact, equipment;
+            public bool interact, equipment, ping;
         }
-        public static int InputsSent;
-        static bool interactHeld, equipmentHeld;
+        public static int InputsSent, PingsSent;
+        static bool interactHeld, equipmentHeld, pingWas;
+
+        /// <summary>Risk of Rain 2's ping, at what V1 is looking at: the silenced controller's own pinger, aimed along the
+        /// view of the ULTRAKILL frame on screen.</summary>
+        static void Ping()
+        {
+            var pinger = quiet != null ? quiet.pingerController : null;
+            if (pinger == null || body == null) return;
+            var f = Frames.Shown;
+            Ray ray;
+            if (Frames.Uploaded > 0 && f.poseValid) ray = new Ray(ToRor(f.eye), Quaternion.Euler(f.pitch, f.yaw, 0f) * Vector3.forward);
+            else if (HavePose) ray = new Ray(ToRor(Latest.eye), Quaternion.Euler(Latest.pitch, Latest.yaw, 0f) * Vector3.forward);
+            else return;
+            pinger.AttemptPing(ray, body.gameObject);
+            PingsSent++;
+        }
 
         /// <summary>Physics step: interact and equipment reach the body the way RoR2's own controller would press them.</summary>
         public static void FixedTick()
@@ -299,6 +314,9 @@ namespace V1Bridge.Ror
             // latched until the next physics step, where RoR2 reads its buttons
             interactHeld |= f.interact;
             equipmentHeld |= f.equipment;
+            // one ping per press: holding the key does not ping again (a second ping on the same thing takes it off)
+            if (f.ping && !pingWas) Ping();
+            pingWas = f.ping;
             sb.Length = 0;
             sb.Append(Proto.Input).Append(' ').Append(++inputSeq).Append(' ').Append(Frames.NowMicros()).Append(' ')
               .Append(S(f.dx)).Append(' ').Append(S(f.dy)).Append(' ').Append(S(f.wheel)).Append(' ').Append(f.buttons);
@@ -485,7 +503,18 @@ namespace V1Bridge.Ror
 
         static readonly HashSet<KeyCode> kept = new HashSet<KeyCode>();
         static float keptAt = -10f;
-        static readonly int[] RorActions = { RewiredConsts.Action.Interact, RewiredConsts.Action.Equipment };
+        /// <summary>Mouse buttons bound to Risk of Rain 2's own actions, as bits in <see cref="V1Drive.Frame.buttons"/>.</summary>
+        static int keptButtons;
+        static readonly int[] RorActions = { RewiredConsts.Action.Interact, RewiredConsts.Action.Equipment, RewiredConsts.Action.Ping };
+
+        /// <summary>For the tests and the log: what is held back from ULTRAKILL.</summary>
+        public static string KeptInfo()
+        {
+            var names = new List<string>();
+            foreach (var k in kept) names.Add(k.ToString());
+            for (int i = 0; i < 5; i++) if ((keptButtons & (1 << i)) != 0) names.Add("mouse" + i);
+            return names.Count > 0 ? string.Join(",", names.ToArray()) : "nothing";
+        }
 
         public static V1Drive.Frame Read(LocalUser user)
         {
@@ -505,17 +534,27 @@ namespace V1Bridge.Ror
             {
                 f.interact = player.GetButton(RewiredConsts.Action.Interact);
                 f.equipment = player.GetButton(RewiredConsts.Action.Equipment);
-                // the keys those are bound to are RoR2's alone (looked up now and then: binds can change in the menu)
+                f.ping = player.GetButton(RewiredConsts.Action.Ping);
+                // the keys and mouse buttons those are bound to are RoR2's alone (looked up now and then: binds can change in the menu)
                 if (Time.unscaledTime - keptAt > 2f)
                 {
                     keptAt = Time.unscaledTime;
                     kept.Clear();
+                    keptButtons = 0;
                     foreach (int action in RorActions)
                     {
                         foreach (var map in player.controllers.maps.ElementMapsWithAction(Rewired.ControllerType.Keyboard, action, true)) if (map.keyCode != KeyCode.None) kept.Add(map.keyCode);
+                        if (m == null) continue;
+                        foreach (var map in player.controllers.maps.ElementMapsWithAction(Rewired.ControllerType.Mouse, action, true))
+                        {
+                            if (map.elementType != Rewired.ControllerElementType.Button) continue;
+                            int button = m.GetButtonIndexById(map.elementIdentifierId);
+                            if (button >= 0 && button < 5) keptButtons |= 1 << button;
+                        }
                     }
                 }
             }
+            f.buttons &= ~keptButtons;
             keys.Clear();
             var kb = c.Keyboard;
             if (kb != null)

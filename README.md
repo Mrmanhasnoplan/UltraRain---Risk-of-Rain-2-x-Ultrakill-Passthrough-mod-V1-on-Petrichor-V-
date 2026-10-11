@@ -54,7 +54,8 @@ that a copy kept in `profiles\ror2\cache` shows at once.
 - If you use E to swap weapons in ULTRAKILL make sure to change the interact button in risk of rain from E to something else.
 - Along with that in mod options under risk of options you can edit your mouse speed (MouseScale, 2 by default) if
   turning feels too slow or too fast.
-- Risk of Rain 2 keeps **Interact** (chests, shrines, teleporter), **Equipment**, **Escape** and the scoreboard.
+- Risk of Rain 2 keeps **Interact** (chests, shrines, teleporter), **Equipment**, **Ping** (middle mouse by default),
+  **Escape** and the scoreboard. Whatever those are bound to is not passed on to ULTRAKILL.
 - Damage: one ULTRAKILL damage unit (a revolver shot) is 300% of V1's RoR2 damage stat, so levels and damage items count.
   Kills are Risk of Rain 2's: gold, experience, on-kill items.
 - Health: ULTRAKILL's HP is the truth and RoR2's health follows it. RoR2 works out a hit (armor, shield, barrier) and
