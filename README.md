@@ -80,6 +80,7 @@ In game: **Settings → Mod Options → RorBridge** (or `profiles\ror2\BepInEx\c
 | MouseScale | 2 | Multiplies mouse movement, on top of ULTRAKILL's sensitivity. |
 | DamageCoefficient | 3 | RoR2 damage of one ULTRAKILL damage unit, × V1's damage stat. |
 | IncomingDamage | 1 | Multiplies what RoR2 does to V1. |
+| V1Health | 90 | V1's base health in RoR2 (grows 30% of this per level). V1's real health is ULTRAKILL's 100; a higher number makes each RoR2 hit cost a smaller share of it. |
 | HideRoR2HealthAndSkills | on | Hide RoR2's health bar and skill icons under ULTRAKILL's HUD. |
 
 ULTRAKILL's own options (field of view, sensitivity, HUD, graphics) are in `profiles\uk\Preferences`.

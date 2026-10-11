@@ -49,6 +49,10 @@ namespace V1Bridge.Ror
             body.bodyColor = Blue;
             // no drop pod: V1 is put down where the run starts, and ULTRAKILL takes it from there
             body.preferredPodPrefab = null;
+            // no healing by standing about: V1 heals the way ULTRAKILL has it, and through Risk of Rain 2's items
+            body.baseRegen = 0f;
+            body.levelRegen = 0f;
+            ApplyHealth();
             BodyPrefab.AddComponent<V1HealthLink>();
 
             var skills = BodyPrefab.GetComponent<SkillLocator>();
@@ -71,6 +75,31 @@ namespace V1Bridge.Ror
             ContentAddition.AddBody(BodyPrefab);
             ContentAddition.AddSurvivorDef(Def);
             Plugin.Log.LogInfo("V1 survivor registered");
+        }
+
+        /// <summary>The configured base health, on the prefab and on any V1 alive now (the setting can change mid-run).</summary>
+        public static void ApplyHealth()
+        {
+            if (BodyPrefab == null) return;
+            float health = Mathf.Clamp(Plugin.V1Health.Value, 1f, 100000f);
+            void Set(CharacterBody b)
+            {
+                b.baseMaxHealth = health;
+                b.levelMaxHealth = health * 0.3f;
+            }
+            Set(BodyPrefab.GetComponent<CharacterBody>());
+            var index = BodyIndex;
+            if (index == BodyIndex.None) return;
+            foreach (var b in CharacterBody.readOnlyInstancesList)
+            {
+                if (b == null || b.bodyIndex != index) continue;
+                Set(b);
+                // worked out now, with the forwarding of heals off: RoR2 tops a body up by whatever its maximum grew,
+                // and a moved slider must not heal V1 in ULTRAKILL
+                HealsReachV1.Muted = true;
+                try { b.RecalculateStats(); }
+                finally { HealsReachV1.Muted = false; }
+            }
         }
 
         static void Skill(GenericSkill slot, string name, string token, Color color)

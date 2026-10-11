@@ -200,6 +200,12 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   head/body box, whip box and occluder are switched off. No part is a head: RoR2 gives the worm no weak point. The
   boxes are axis-aligned bounds, so slightly generous on a turned segment. Protocol 8. This is the first use of the
   "mirror the real hurt boxes" plan; every other monster is still one box from its capsule.
+- V1's RoR2 health: config `V1Health` (Balance, default 90, slider 10-500 in Mod Options) is the body's `baseMaxHealth`,
+  with `levelMaxHealth` 30% of it as RoR2's survivors have; `V1Survivor.ApplyHealth` sets the prefab and any live V1
+  when the setting changes. `baseRegen` and `levelRegen` are 0: V1 no longer regenerates by itself (regeneration from
+  items still reaches it as healing). RoR2 heals a body by whatever its maximum health grew (`RecalculateStats`), and
+  that heal is forwarded to ULTRAKILL like any other: the slider recalculates with forwarding muted
+  (`HealsReachV1.Muted`), but a level-up or a health item still heals V1 this way (see known issues).
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -241,6 +247,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-11 | health (golemplains) | PASS (1 run of the final version, 22/22, 0 real files changed, 0 exceptions) | level 1: max health 90, regen 0; hurt to 60 HP and left alone 8 s: still 60, no RoR2 healing forwarded; body at 54 of 90; setting 200 mid-run gave max health 200 with ULTRAKILL HP still 60 (the first version of this healed V1 to 100: fixed), back to 90 gave 90; the config file was left at 90. The slider itself was not operated in the menu |
 | 2026-10-11 | worm (golemplains) | PASS (1 run, 22/22, 0 real files changed, 0 exceptions); whiplash re-run afterwards as a regression: PASS 27/27 | Magma Worm: 23 hurt boxes on the monster, 23 listed, 23 boxes in ULTRAKILL; 3 of 3 shots aimed at the segment furthest from its head landed, the furthest 33.9 m from its core (segments reach 39.9 m; the old single box reached 7.6 m). Overloading Worm, explosions across several segments and the Whiplash on a worm not run |
 | 2026-10-11 | newt (bazaar) | PASS (1 run, 21/21, 0 real files changed, 0 exceptions) | the Newt appears 18 s after a run started straight in the Bazaar; team Neutral, 500,000 health, mass 100,000; ULTRAKILL has his stand-in; a shotgun pellet x0.25 took 1.5 off him. His reaction (kicking V1 out of the Bazaar) was not provoked. The Bazaar itself: 227 colliders, V1 stands on it |
 | 2026-10-11 | closeup (golemplains) | PASS (1 run, 24/24, 0 real files changed, 0 exceptions) | Beetle Guard with its nearest hurt box 0.41 m from the eye: fade 1, solid in the screenshot; chest 0.48 m from the eye: fade 1. Stage geometry that fades by its own shader, if any does, is not covered |
@@ -282,7 +289,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - The scripted fireball catch in the `parry` scenario fails about half the time (timing); the parried projectile is removed and its owner damaged, it is not flung back as an ULTRAKILL projectile.
 - The `combat` scenario is not deterministic: the scripted punch sometimes misses a Lemurian spawned 1.5 m away, and the
   "own attack" check can be confused by regeneration or invincibility frames. The mechanics behind both passed in other runs.
-- RoR2's passive regeneration is forwarded like any heal, so V1 slowly regenerates in ULTRAKILL (hard damage still caps it).
+- V1 has no base regeneration since 2026-10-11; regeneration given by items is still forwarded as healing. Gaining maximum health in RoR2 (a level-up, a health item) heals V1 in ULTRAKILL by the gain's share of the new maximum, about 23 HP for a level-up from level 1: RoR2 tops the body up and the bridge forwards it. Not changed; the owner has been told.
 - A monster's stand-in is one box from its movement capsule (x1.15), not its real hurt boxes; big or oddly shaped bosses will be off. The two worms are the exception (see Decisions).
 - Overheal (ULTRAKILL HP above 100) is not shown on the RoR2 body.
 - The Whiplash pull starts when the hook key is released (ULTRAKILL's rule); a pulled monster ignores RoR2 collision while dragged. Flying monsters without a CharacterMotor are moved by transform and untested.

@@ -26,6 +26,7 @@ namespace V1Bridge.Ror
         internal static ConfigEntry<float> MouseScale;
         internal static ConfigEntry<float> IncomingDamage;
         internal static ConfigEntry<bool> HideRorHud;
+        internal static ConfigEntry<float> V1Health;
 
         internal static string Arg(string name)
         {
@@ -45,6 +46,7 @@ namespace V1Bridge.Ror
             MouseScale = Config.Bind("Controls", "MouseScale", 2f, "Multiplies the mouse movement handed to ULTRAKILL, on top of ULTRAKILL's own sensitivity.");
             IncomingDamage = Config.Bind("Balance", "IncomingDamage", 1f, "Multiplies the damage Risk of Rain 2 does to V1.");
             HideRorHud = Config.Bind("HUD", "HideRoR2HealthAndSkills", true, "Hide Risk of Rain 2's health bar and skill icons while playing V1 (ULTRAKILL's HUD shows them).");
+            V1Health = Config.Bind("Balance", "V1Health", 90f, "V1's base health in Risk of Rain 2, at level 1 (it grows 30% of this per level, as every survivor's does). V1's real health is ULTRAKILL's 100: a bigger number here makes each Risk of Rain 2 hit cost a smaller share of it.");
             UkFps = Config.Bind("Performance", "UltrakillFpsCap", 120, "ULTRAKILL's frame rate cap.");
             var harmony = new Harmony("dev.v1bridge.ror");
             SaveGuard.Apply(harmony);
@@ -54,6 +56,7 @@ namespace V1Bridge.Ror
 
             V1Survivor.Register();
             V1Model.LoadCache();
+            V1Health.SettingChanged += (s, e) => V1Survivor.ApplyHealth();
             UkHeight.SettingChanged += (s, e) => V1Drive.SendSize();
             UkFps.SettingChanged += (s, e) => V1Drive.SendSize();
             if (BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey(SettingsMenu.RiskOfOptionsGuid))

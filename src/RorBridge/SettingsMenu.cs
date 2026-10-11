@@ -18,6 +18,7 @@ namespace V1Bridge.Ror
             ModSettingsManager.AddOption(new StepSliderOption(Plugin.MouseScale, new StepSliderConfig { min = 0.1f, max = 5f, increment = 0.05f }));
             ModSettingsManager.AddOption(new StepSliderOption(Plugin.DamageCoefficient, new StepSliderConfig { min = 0.5f, max = 10f, increment = 0.25f }));
             ModSettingsManager.AddOption(new StepSliderOption(Plugin.IncomingDamage, new StepSliderConfig { min = 0.25f, max = 3f, increment = 0.05f }));
+            ModSettingsManager.AddOption(new StepSliderOption(Plugin.V1Health, new StepSliderConfig { min = 10f, max = 500f, increment = 5f }));
             ModSettingsManager.AddOption(new CheckBoxOption(Plugin.HideRorHud));
         }
     }

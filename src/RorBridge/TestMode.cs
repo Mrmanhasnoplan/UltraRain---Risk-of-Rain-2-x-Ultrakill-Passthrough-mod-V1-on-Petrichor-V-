@@ -90,6 +90,7 @@ namespace V1Bridge.Ror
                 case "closeup": body = CloseUp(); break;
                 case "newt": body = NewtTest(); break;
                 case "worm": body = WormTest(); break;
+                case "health": body = HealthTest(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -1890,6 +1891,53 @@ namespace V1Bridge.Ror
             Check("and land where the old single box never reached", best > oldReach + 3f, metrics["worm_shots"]);
             yield return SnapRor("ror2-worm");
             yield return SnapUk("uk");
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
+            yield return BackToTitle();
+        }
+
+        /// <summary>V1's Risk of Rain 2 health is the configured number, follows the setting live, and does not regenerate
+        /// by itself.</summary>
+        IEnumerator HealthTest()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            float configured = Plugin.V1Health.Value;
+            metrics["configured_health"] = F(configured);
+            metrics["body"] = "level " + F(v1.level) + ", max health " + F(v1.maxHealth) + ", regen " + F(v1.regen) + " (base " + F(v1.baseRegen) + ", per level " + F(v1.levelRegen) + ")";
+            Check("V1's health in Risk of Rain 2 is the configured number at level 1", Mathf.Abs(v1.maxHealth - configured) < 0.5f && Mathf.Abs(v1.level - 1f) < 0.01f, metrics["body"]);
+            Check("the default is 90", Mathf.Abs((float)Plugin.V1Health.DefaultValue - 90f) < 0.01f, Plugin.V1Health.DefaultValue.ToString());
+            Check("V1 has no regeneration of its own", Mathf.Abs(v1.regen) < 0.001f, metrics["body"]);
+
+            // hurt, then left alone: nothing comes back
+            yield return WaitVulnerable();
+            UkLink.Send(Proto.Hurt + " 40");
+            yield return new WaitForSecondsRealtime(1.5f);
+            int hp0 = V1Drive.UkHp;
+            float healed0 = HealsReachV1.Sent;
+            yield return new WaitForSecondsRealtime(8f);
+            metrics["left_alone_8s"] = "ULTRAKILL HP " + hp0 + " -> " + V1Drive.UkHp + ", Risk of Rain 2 healing forwarded " + F(HealsReachV1.Sent - healed0);
+            Check("hurt and left alone for 8 s, V1 does not heal", hp0 < 100 && V1Drive.UkHp == hp0 && HealsReachV1.Sent - healed0 < 0.01f, metrics["left_alone_8s"]);
+            Check("the body shows the same share of its health", Mathf.Abs(v1.healthComponent.health / v1.healthComponent.fullHealth * 100f - hp0) < 2f, F(v1.healthComponent.health) + " of " + F(v1.healthComponent.fullHealth));
+
+            // the setting, changed in the middle of a run (and put back: it is the player's own config file)
+            float changed = -1f;
+            int hpAfter = -1;
+            try
+            {
+                Plugin.V1Health.Value = 200f;
+                yield return new WaitForSecondsRealtime(1.5f);
+                changed = v1.maxHealth;
+                hpAfter = V1Drive.UkHp;
+            }
+            finally { Plugin.V1Health.Value = configured; }
+            yield return new WaitForSecondsRealtime(1.5f);
+            metrics["setting_changed"] = "200 gave max health " + F(changed) + " with ULTRAKILL HP " + hpAfter + "; back to " + F(configured) + " gave " + F(v1.maxHealth);
+            Check("changing the setting changes the body's health at once", Mathf.Abs(changed - 200f) < 0.5f && Mathf.Abs(v1.maxHealth - configured) < 0.5f, metrics["setting_changed"]);
+            Check("and leaves V1's ULTRAKILL HP alone", hpAfter == hp0 && V1Drive.UkHp == hp0, metrics["setting_changed"]);
             Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
             yield return BackToTitle();
         }

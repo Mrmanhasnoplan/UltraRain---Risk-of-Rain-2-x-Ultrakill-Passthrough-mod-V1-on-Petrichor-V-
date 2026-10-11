@@ -342,10 +342,12 @@ namespace V1Bridge.Ror
     static class HealsReachV1
     {
         public static float Sent;
+        /// <summary>Set while the bridge itself changes the body's health figures: that is not healing.</summary>
+        public static bool Muted;
 
         static void Postfix(HealthComponent __instance, float __result)
         {
-            if (__result <= 0f || !V1Drive.Linked(__instance)) return;
+            if (__result <= 0f || Muted || !V1Drive.Linked(__instance)) return;
             float x = __result / __instance.fullHealth * 100f;
             Sent += x;
             UkLink.Send(Proto.Heal + " " + x.ToString("0.###", CultureInfo.InvariantCulture));
