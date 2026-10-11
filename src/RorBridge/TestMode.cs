@@ -93,6 +93,7 @@ namespace V1Bridge.Ror
                 case "health": body = HealthTest(); break;
                 case "maxhealth": body = MaxHealthItems(); break;
                 case "sharpshooter": body = Sharpshooter(); break;
+                case "coinshot": body = CoinsAgainstHitscan(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -2132,6 +2133,74 @@ namespace V1Bridge.Ror
             metrics["sharpshooter"] = (Parry.ShotsBlown - blown0) + " blown up after " + tries + " shots (ULTRAKILL counts " + ukBlown + "); V1 HP " + hp0 + " -> " + V1Drive.UkHp + ", " + (V1HealthLink.HurtsSent - hurts0) + " hits on V1; the owner 34 m off lost " + F(ownerHp0 - owner.healthComponent.combinedHealth) + "; last hit " + Monsters.LastHit;
             Check("a Sharpshooter shot through a fireball blew it up", Parry.ShotsBlown > blown0 && ukBlown >= 1, metrics["sharpshooter"]);
             yield return SnapRor("ror2-after-shot");
+            yield return SnapUk("uk");
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
+            yield return BackToTitle();
+        }
+
+        /// <summary>One hitscan shot from a monster, the way Risk of Rain 2's monsters fire them, straight at V1's head.</summary>
+        void MonsterShot(CharacterBody from, CharacterBody v1, float damage)
+        {
+            Vector3 eye = V1Drive.ToRor(V1Drive.Latest.eye), origin = from.corePosition + Vector3.up * 1.5f;
+            new BulletAttack
+            {
+                owner = from.gameObject, weapon = from.gameObject, origin = origin, aimVector = (eye - origin).normalized, damage = damage,
+                maxDistance = 200f, radius = 0.1f, bulletCount = 1, minSpread = 0f, maxSpread = 0f, procCoefficient = 1f, force = 0f,
+                falloffModel = BulletAttack.FalloffModel.None, hitMask = LayerIndex.CommonMasks.bullet, stopperMask = LayerIndex.CommonMasks.bullet
+            }.Fire();
+        }
+
+        /// <summary>A monster's hitscan shot that meets one of V1's coins is the coin's: it never reaches V1 as the shot it
+        /// was, and ULTRAKILL does with the coin what it does when its own enemies shoot one.</summary>
+        IEnumerator CoinsAgainstHitscan()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            Check("the bullet patches are on", Coins.Problem == null, Coins.Problem ?? "");
+            var guard = SpawnAhead("BeetleGuardMaster", 20f, false);
+            if (!Check("spawned a Beetle Guard to do the shooting", guard != null)) yield break;
+            guard.baseMaxHealth = 100000f;
+            guard.MarkAllStatsDirty();
+            yield return new WaitForSecondsRealtime(2.5f);
+            yield return AimAt(() => guard.corePosition);
+            float dmg = v1.maxHealth * 0.2f;
+
+            // 1. no coin: the shot is V1's to take
+            yield return WaitVulnerable();
+            int hurts0 = V1HealthLink.HurtsSent, hp0 = V1Drive.UkHp;
+            MonsterShot(guard, v1, dmg);
+            yield return new WaitForSecondsRealtime(1.2f);
+            metrics["shot_without_coin"] = "HURT " + (V1HealthLink.HurtsSent > hurts0 ? F(V1HealthLink.LastHurt) : "none") + ", ULTRAKILL HP " + hp0 + " -> " + V1Drive.UkHp;
+            Check("with no coin in the way the shot hits V1", V1HealthLink.HurtsSent > hurts0 && V1Drive.UkHp < hp0, metrics["shot_without_coin"]);
+
+            // 2. a coin on the line
+            yield return Whole();
+            yield return WaitVulnerable();
+            Vector3 eye = V1Drive.ToRor(V1Drive.Latest.eye), origin = guard.corePosition + Vector3.up * 1.5f;
+            var at = V1Drive.ToUk(eye + (origin - eye).normalized * 6f + Vector3.down * 0.15f);
+            UkLink.Send(Proto.TestCoin + " " + F(at.x) + " " + F(at.y) + " " + F(at.z));
+            float t = Now;
+            while (Coins.Listed == 0 && Now - t < 3f) yield return null;
+            metrics["coins_listed"] = Coins.Listed.ToString();
+            if (!Check("Risk of Rain 2 knows where the coin is", Coins.Listed >= 1)) yield break;
+            hurts0 = V1HealthLink.HurtsSent;
+            hp0 = V1Drive.UkHp;
+            int taken0 = Coins.Intercepted;
+            MonsterShot(guard, v1, dmg);
+            yield return new WaitForSecondsRealtime(0.25f);
+            int hpSoon = V1Drive.UkHp;
+            yield return UkState();
+            string hits = StateValue(stateReply, "coinhits") ?? "?";
+            Check("the coin took the shot", Coins.Intercepted == taken0 + 1 && hits == "1", (Coins.Intercepted - taken0) + " taken here, ULTRAKILL counts " + hits);
+            Check("the shot itself never reached V1", V1HealthLink.HurtsSent == hurts0 && hpSoon == hp0, "HURT sent " + (V1HealthLink.HurtsSent - hurts0) + ", ULTRAKILL HP " + hp0 + " -> " + hpSoon + " a quarter of a second on");
+            // then ULTRAKILL's coin does what it does with an enemy's shot
+            yield return new WaitForSecondsRealtime(2f);
+            metrics["after_the_coin"] = "ULTRAKILL HP " + hp0 + " -> " + V1Drive.UkHp + " two seconds on (the coin's own shot at V1, if V1 did not shoot it first), coins left " + Coins.Listed;
+            Check("the coin is spent", Coins.Listed == 0, metrics["after_the_coin"]);
             yield return SnapUk("uk");
             Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
             yield return BackToTitle();

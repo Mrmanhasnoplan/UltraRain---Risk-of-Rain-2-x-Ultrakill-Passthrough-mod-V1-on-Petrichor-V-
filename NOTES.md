@@ -230,6 +230,16 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   `PARRY b id`, and RorBridge destroys the RoR2 projectile (no return damage: the explosion is ULTRAKILL's and hurts
   the stand-ins near it by the usual path). A blown id is not rebuilt for 2 s. Protocol 10. `STATE` now carries
   `weapon=<name>/revolver<variant>` and `blown=`; `TESTARM n` (tests) picks the arm.
+- Coins against hitscan (`Coins.cs`; `UkBridge/Parry.cs` `SendCoins`/`CoinHit`): UkBridge lists V1's coins that have not
+  been shot yet every frame there are any (`COINS id,x,y,z;...`, from `CoinTracker.revolverCoinsList`). A prefix on
+  RoR2's `BulletAttack.BulletHitsFromRaycast(Ray, ...)` looks, for a shot whose owner is not on V1's team, for the
+  nearest coin within 0.75 m + the bullet's radius of the ray, with neither the stage nor V1 in front of it; the
+  bullet's `maxDistance` is cut to the coin for that one bullet (put back in a `FireSingle` postfix) and `COINHIT id`
+  has UkBridge call ULTRAKILL's own `Coin.DelayedEnemyReflect()`: what an ULTRAKILL enemy's shot does to a coin (it
+  is passed through any other coins, the last one flashes, and 0.5 s later it fires at V1 for 7.5 x its power,
+  unless V1 shoots it first, which makes it V1's ricoshot). `customTarget` is left empty, as for ULTRAKILL's enemies
+  aiming at the player. The two patches are applied by hand (`Coins.Apply`) so a rename cannot take `PatchAll` down.
+  Only `BulletAttack` is covered: monsters whose "laser" is a blast or a projectile are not hitscan to RoR2. Protocol 11.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -271,6 +281,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-11 | coinshot (golemplains) | PASS (1 run, 23/23, 0 real files changed, 0 exceptions) | a monster's BulletAttack at V1's head from 20 m: with no coin, HURT 20 (100 -> 80); with a coin (TESTCOIN) 6 m in front of V1 on the line: taken by the coin (ULTRAKILL counts 1), no HURT, HP 100 -> 100; two seconds on the coin was gone and V1 still at 100: the coin's own shot at V1 did no damage this once, not looked into. Not run: a thrown coin, several coins, V1 shooting the flashing coin, a real monster's hitscan (Lesser Wisp, Clay Templar...) |
 | 2026-10-11 | sharpshooter (golemplains) | PASS (1 run, 21/21, 0 real files changed, 0 exceptions) | revolver turned to the Sharpshooter in 2 presses (`Alternative_Revolver_Twirl/revolver2alt`); alternate fire held 1.3 s, a fireball fired at V1 from 26 m along the aim line, shot released 0.12 s later: 1 blown up on the first shot (ULTRAKILL counts 1), V1 100 -> 100 HP with no hit, the Beetle Guard behind it lost 30. Parry re-run afterwards: 2 runs failed with the Knuckleblaster out (it does not parry; punches came through as x2.5), a third with `TESTARM 0` parried a melee hit and caught the fireball (its one failed check: the Beetle Guard's own swing took the parry before the test's scripted hit arrived) |
 | 2026-10-11 | maxhealth, with the shield layer (golemplains) | PASS (1 run of the final version, 28/28, 0 real files changed, 0 exceptions) | at level 10: Personal Shield Generator (333 health + 26.6 shield): a 66.6 hit = 19 HP with the shield gone first; 60 HP of healing given in ULTRAKILL stopped at 93 (the limit: full health), shield 1.5; left alone 7 s: 100, shield full. Transcendence (1 + 499.5): a 66.6 hit = 13 HP; 50 HP of healing in ULTRAKILL: 87 -> 87; left alone 5.4 s: 100; a hit of 80% = 80 HP, alive. "Healing in ULTRAKILL" was given with the HEAL message (ULTRAKILL's GetHealth), not by real blood or a parry. One earlier run began at 61 HP: four real hits from the stage's monsters before the test cleared them |
 | 2026-10-11 | maxhealth (golemplains) | before the fixes: FAIL 3 checks (losing Shaped Glass healed V1 60 -> 86; with Transcendence an 18-damage hit and a 109-damage hit both cost V1 nothing, only RoR2's shield). After: PASS (1 run, 23/23, 0 real files changed, 0 exceptions); health re-run afterwards: PASS 22/22 | 18 damage on 90 health = 20 HP; Shaped Glass: max 45, HP unchanged on pickup, the same hit = 40 HP, removal 60 -> 60; level 1 -> 10 (max 90 -> 333): HP 60 -> 60; Transcendence at level 10 (1 health + 499.5 shield): pickup HP unchanged, a fifth-of-health hit = 13 HP (13.3 expected), a hit of 80% of the pool = 80 HP, not dead. Not run: Personal Shield Generator alone, barrier, a real curse (Eclipse 8, void fields) |

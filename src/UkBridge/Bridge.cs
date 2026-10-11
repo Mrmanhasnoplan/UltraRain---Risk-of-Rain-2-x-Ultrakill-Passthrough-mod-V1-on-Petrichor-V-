@@ -38,6 +38,7 @@ namespace V1Bridge.Uk
             UpdateLevel();
             UpdateModelExport();
             UpdateOil();
+            SendCoins();
             InjectInput();
             SendPose();
             // out of sight from the first frame: off-screen, never minimised (a minimised Unity window stops drawing)
@@ -132,6 +133,9 @@ namespace V1Bridge.Uk
                     foreach (var ex in go.GetComponentsInChildren<Explosion>()) { ex.damage = 0; ex.enemyDamageMultiplier = 1f; ex.harmless = false; ex.canHit = AffectedSubjects.EnemiesOnly; }
                     break;
                 }
+                case Proto.CoinHit:
+                    CoinHit(rest);
+                    break;
                 case "TESTARM":
                 {
                     // (tests) the arm V1 punches with: 0 is the Feedbacker, the one that parries
@@ -254,7 +258,7 @@ namespace V1Bridge.Uk
 
         string StateLine()
         {
-            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " volumes=" + VolumeInfo + " audio=" + (levelPrepared ? AudioInfo() : "-") + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " parts=" + PartsShown +" dmg=" + DamageReports + " hook=" + HookInfo() + " pulled=" + PulledInfo() + " coins=" + (MonoSingleton<ObjectTracker>.Instance != null ? MonoSingleton<ObjectTracker>.Instance.zappablesList.Count : -1) + " nails=" + NailCount() + " conductions=" + Conductions + " launches=" + Launches + " knocks=" + Knocks + " pulls=" + Pulls + " shots=" + shots.Count + " blown=" + ShotsBlown + " weapon=" + WeaponInfo() + " parries=" + Parries + " res=" + Screen.width + "x" + Screen.height
+            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " volumes=" + VolumeInfo + " audio=" + (levelPrepared ? AudioInfo() : "-") + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " parts=" + PartsShown +" dmg=" + DamageReports + " hook=" + HookInfo() + " pulled=" + PulledInfo() + " coins=" + (MonoSingleton<ObjectTracker>.Instance != null ? MonoSingleton<ObjectTracker>.Instance.zappablesList.Count : -1) + " nails=" + NailCount() + " conductions=" + Conductions + " launches=" + Launches + " knocks=" + Knocks + " pulls=" + Pulls + " shots=" + shots.Count + " blown=" + ShotsBlown + " coinhits=" + CoinHits +" weapon=" + WeaponInfo() + " parries=" + Parries + " res=" + Screen.width + "x" + Screen.height
                    + " t=" + Time.unscaledTime.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " blocked=" + SaveGuard.Blocked
                    + " saves=" + GameProgressSaver.BaseSavePath.Replace(' ', '?');
         }

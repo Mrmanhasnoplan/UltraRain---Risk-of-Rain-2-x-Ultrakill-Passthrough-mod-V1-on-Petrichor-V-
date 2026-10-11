@@ -51,6 +51,7 @@ namespace V1Bridge.Ror
             var harmony = new Harmony("dev.v1bridge.ror");
             SaveGuard.Apply(harmony);
             harmony.PatchAll(typeof(Plugin).Assembly);
+            Coins.Apply(harmony);
             // what the game asks of mods: keeps modded players out of vanilla matchmaking
             RoR2.RoR2Application.isModded = true;
 
@@ -84,6 +85,7 @@ namespace V1Bridge.Ror
             UkLink.OnMessage += V1Drive.OnMessage;
             UkLink.OnMessage += Monsters.OnMessage;
             UkLink.OnMessage += Parry.OnMessage;
+            UkLink.OnMessage += Coins.OnMessage;
             UkLink.OnMessage += V1Model.OnMessage;
             UkLink.Start(Plugin.Port.Value);
             string test = Plugin.Arg(TestMode.ArgName);

@@ -6,7 +6,7 @@ namespace V1Bridge
     {
         public const string Version = "0.1.0";
         /// <summary>Bumped whenever a message or the frame file changes shape; the handshake refuses a mismatch.</summary>
-        public const int Protocol = 10;
+        public const int Protocol = 11;
         /// <summary>Not Ultracraft's 27110, so both can be installed side by side.</summary>
         public const int DefaultPort = 27120;
 
@@ -37,6 +37,7 @@ namespace V1Bridge
         public const string Hurt = "HURT";         // HURT <n>: V1 loses n of ULTRAKILL's 100, if ULTRAKILL agrees (dash invincibility...)
         public const string Heal = "HEAL";         // HEAL <x>: V1 gains x of ULTRAKILL's 100
         public const string Cap = "CAP";           // CAP <hp>: V1's HP may not rise above this for now (999: no limit). The part of V1's health that is Risk of Rain 2 shield, and is down, is not ULTRAKILL's to heal
+        public const string CoinHit = "COINHIT";   // COINHIT <coin id>: a monster's hitscan shot ran into that coin; what the coin does with it is ULTRAKILL's (Coin.DelayedEnemyReflect)
         public const string Kill = "KILL";         // KILL <id>: that monster died to V1
         public const string Projs = "PROJS";       // PROJS id,x,y,z,radius;...: every hostile projectile in flight
         public const string Parried = "PARRIED";   // PARRIED <monster id>: V1's punch met that monster's melee hit
@@ -51,6 +52,7 @@ namespace V1Bridge
         public const string Ready = "READY";       // the Sandbox is stripped down to V1 and waiting for a TP
         public const string GeoDone = "GEODONE";   // GEODONE <colliders> <triangles> <ms> <ok|problem>
         public const string Probed = "PROBED";
+        public const string Coins = "COINS";       // COINS id,x,y,z;...: V1's coins in the air that a shot can still hit (empty: none)
         public const string Knock = "KNOCK";       // KNOCK <id> <dx> <dy> <dz> <strength>: a blast threw that monster this way (strength 1 = a rocket's)
         public const string Oiled = "OILED";       // OILED <id> <0-10>: how soaked in gasoline that monster is (0: clean again)
         public const string Model = "MODEL";       // MODEL <path> <info> | MODEL none: V1's body, read out of this ULTRAKILL, for character select

@@ -14,8 +14,56 @@ namespace V1Bridge.Uk
         readonly List<int> shotsGone = new List<int>();
         public int Parries;
 
-        public int ShotsBlown;
+        public int ShotsBlown, CoinHits;
         readonly Dictionary<int, float> blownAt = new Dictionary<int, float>();
+        readonly System.Text.StringBuilder coinLine = new System.Text.StringBuilder(128);
+        bool coinsSent;
+
+        /// <summary>COINS: where V1's coins hang, for Risk of Rain 2 to see which of its monsters' hitscan shots run into
+        /// one. Only coins a shot can still take (not yet shot by anyone).</summary>
+        void SendCoins()
+        {
+            if (!levelPrepared || !v1Landed || idle) return;
+            var tracker = MonoSingleton<CoinTracker>.Instance;
+            coinLine.Length = 0;
+            coinLine.Append(Proto.Coins).Append(' ');
+            int n = 0;
+            if (tracker != null)
+            {
+                foreach (var coin in tracker.revolverCoinsList)
+                {
+                    if (coin == null || coin.shot || !coin.gameObject.activeInHierarchy) continue;
+                    var p = coin.transform.position;
+                    coinLine.Append(coin.GetInstanceID()).Append(',').Append(S(p.x)).Append(',').Append(S(p.y)).Append(',').Append(S(p.z)).Append(';');
+                    n++;
+                }
+            }
+            // every frame while there are any, and once more when the last is gone
+            if (n == 0 && !coinsSent) return;
+            coinsSent = n > 0;
+            Net.Send(coinLine.ToString());
+        }
+
+        /// <summary>COINHIT id: a Risk of Rain 2 monster's hitscan shot ran into that coin. ULTRAKILL does with it what it
+        /// does when one of its own enemies shoots a coin: the coin takes the shot, passes it on through any other
+        /// coins, flashes, and half a second later fires at V1, unless V1 shoots the coin first and makes the shot its own.</summary>
+        void CoinHit(string rest)
+        {
+            if (!levelPrepared || !int.TryParse(rest.Trim(), out int id)) return;
+            var tracker = MonoSingleton<CoinTracker>.Instance;
+            if (tracker == null) return;
+            foreach (var coin in tracker.revolverCoinsList)
+            {
+                if (coin == null || coin.GetInstanceID() != id) continue;
+                try
+                {
+                    coin.DelayedEnemyReflect();
+                    CoinHits++;
+                }
+                catch (Exception e) { Plugin.Log.LogWarning("coin: " + e.Message); }
+                return;
+            }
+        }
 
         /// <summary>Removing a projectile's copy ourselves is not ULTRAKILL destroying it.</summary>
         static void Remove(GameObject go)
