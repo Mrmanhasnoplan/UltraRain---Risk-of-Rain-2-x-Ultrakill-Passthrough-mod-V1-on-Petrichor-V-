@@ -87,6 +87,7 @@ namespace V1Bridge.Ror
                 case "outofbounds": body = OutOfBoundsTest(); break;
                 case "ping": body = PingTest(); break;
                 case "items": body = ItemsHidden(); break;
+                case "closeup": body = CloseUp(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -1702,6 +1703,64 @@ namespace V1Bridge.Ror
             Vector3 ahead = V1Drive.ToRor(V1Drive.Latest.eye) + Quaternion.Euler(0f, V1Drive.Latest.yaw, 0f) * Vector3.forward * 10f;
             yield return AimAt(() => ahead);
             yield return SnapRor("ror2-all-items-ahead");
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
+            yield return BackToTitle();
+        }
+
+        /// <summary>Monsters and props stay solid when V1's view is right up against them (RoR2 fades them out for its own
+        /// third-person camera).</summary>
+        IEnumerator CloseUp()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var user = LocalUserManager.GetFirstLocalUser();
+            var v1 = user.cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            var rig = user.cameraRigController;
+            Check("RoR2's close-up fading is off for V1's view", rig != null && !rig.enableFading);
+
+            // 1. a monster, close enough that RoR2 would have faded it right out
+            var guard = SpawnAhead("BeetleGuardMaster", 2.4f, false);
+            if (!Check("spawned a Beetle Guard up close", guard != null)) yield break;
+            yield return new WaitForSecondsRealtime(2.5f);
+            yield return AimAt(() => guard.corePosition);
+            yield return new WaitForSecondsRealtime(0.5f);
+            var model = guard.modelLocator.modelTransform.GetComponent<CharacterModel>();
+            Vector3 eye = V1Drive.ToRor(V1Drive.Latest.eye);
+            float nearest = 999f;
+            foreach (var hb in guard.hurtBoxGroup.hurtBoxes) nearest = Mathf.Min(nearest, Vector3.Distance(hb.transform.position, eye) - Util.SphereVolumeToRadius(hb.volume));
+            float fade = HarmonyLib.Traverse.Create(model).Field("fade").GetValue<float>();
+            metrics["monster"] = "nearest hurt box " + F(nearest) + " m from the eye (RoR2 fades from " + F(rig.fadeEndDistance) + " m down to nothing at " + F(rig.fadeStartDistance) + " m), fade " + F(fade);
+            Check("the monster is inside RoR2's fade distance", nearest < rig.fadeEndDistance, metrics["monster"]);
+            Check("and is drawn solid", fade > 0.99f && model.visibility == VisibilityLevel.Visible, metrics["monster"]);
+            yield return SnapRor("ror2-monster-close");
+            guard.healthComponent.Suicide();
+            yield return new WaitForSecondsRealtime(1.5f);
+
+            // 2. a chest
+            var card = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<InteractableSpawnCard>("RoR2/Base/Chest1/iscChest1.asset").WaitForCompletion();
+            var feet = V1Drive.ToRor(V1Drive.Latest.feet);
+            var spot = feet + Quaternion.Euler(0f, V1Drive.Latest.yaw, 0f) * Vector3.forward * 1.6f;
+            if (Physics.Raycast(spot + Vector3.up * 20f, Vector3.down, out var ground, 60f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore)) spot = ground.point;
+            var chest = card != null ? DirectorCore.instance.TrySpawnObject(new DirectorSpawnRequest(card, new DirectorPlacementRule { placementMode = DirectorPlacementRule.PlacementMode.Direct, position = spot }, new Xoroshiro128Plus(1))) : null;
+            if (Check("spawned a chest in front of V1", chest != null))
+            {
+                yield return new WaitForSecondsRealtime(1f);
+                yield return AimAt(() => chest.transform.position + Vector3.up * 0.6f);
+                yield return new WaitForSecondsRealtime(0.5f);
+                var dither = chest.GetComponentInChildren<DitherModel>();
+                eye = V1Drive.ToRor(V1Drive.Latest.eye);
+                float gap = dither != null && dither.bounds != null ? Vector3.Distance(dither.bounds.ClosestPointOnBounds(eye), eye) : -1f;
+                metrics["chest"] = dither != null ? F(gap) + " m from the eye, fade " + F(dither.fade) : "the chest has no fading of its own";
+                if (dither != null)
+                {
+                    Check("the chest is inside RoR2's fade distance", gap < rig.fadeEndDistance, metrics["chest"]);
+                    Check("and is drawn solid", dither.fade > 0.99f, metrics["chest"]);
+                }
+                yield return SnapRor("ror2-chest-close");
+            }
             Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
             yield return BackToTitle();
         }

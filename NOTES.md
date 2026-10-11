@@ -187,6 +187,9 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   with the device's context guarded (`ID3D10Multithread.SetMultithreadProtected`, once, then 60 ms for the render
   thread to clear) and every copy inside `Enter`/`Leave`. Every GPU read is checked against `mesh.bounds`; a mesh
   that does not fit is skipped and named in the log (`skipped:` / `problem:`), so a stage with no floor says why.
+- Close-up fading: RoR2 dithers monsters (`CharacterModel`) and props (`DitherModel`) away as its camera comes within
+  4 m, to nothing at 1 m, so they do not hide the survivor. Both ask the rig's `enableFading`; it is switched off on
+  V1's rig while the bridge has it and put back on disengage. Other survivors are untouched.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -228,6 +231,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-11 | closeup (golemplains) | PASS (1 run, 24/24, 0 real files changed, 0 exceptions) | Beetle Guard with its nearest hurt box 0.41 m from the eye: fade 1, solid in the screenshot; chest 0.48 m from the eye: fade 1. Stage geometry that fades by its own shader, if any does, is not covered |
 | 2026-10-11 | geometry (snowyforest, Siphoned Forest) | before: FAIL, 4 of 81 ground points, V1 fell through (all 23 GPU-read meshes came back as zeros). After: PASS 1 of 2 runs (30/30; 0 real files changed); the other run had the ground right too (81/81) and failed only the after-walk checks, V1 having spawned on a cliff top and walked off it | 353 colliders, 326,845 triangles, 25 meshes straight from Direct3D; export 489 ms, build in ULTRAKILL 412 ms; ground equal within 6 mm at 81/81 points; V1 walked 35 m, feet 5 mm above RoR2's ground. Spawn point differs per run |
 | 2026-10-11 | items (golemplains) | PASS (1 run of the final version, 24/24, 0 real files changed) | 8 common items: 9 displays, RoR2 hid all of them itself. Every non-lunar item (191 given, 165 displays): 0 renderers left on, 0 followers; the bridge switched off 17 that RoR2 had left on (Plasma Shrimp's mesh, Tooth necklace decal, H3AD-5T, Chronic Expansion, Elusive Antlers particles, footstep dust, jet flames...). The run logs 1 RoR2 exception from its item-notification queue, caused by the test handing out 191 items in one frame. Screenshots with every item are too full of wards, bubbles and allies to judge by eye |
 | 2026-10-11 | ping (golemplains) | PASS (1 run, 22/22, 0 real files changed, 0 exceptions) | key held 0.5 s = 1 ping; Beetle Guard 8 m ahead pinged as target; ground 6 m ahead pinged 0 m from the aim point; held back from ULTRAKILL on this profile: T, Q, middle mouse. Scripted input: the real middle-mouse press was not exercised |

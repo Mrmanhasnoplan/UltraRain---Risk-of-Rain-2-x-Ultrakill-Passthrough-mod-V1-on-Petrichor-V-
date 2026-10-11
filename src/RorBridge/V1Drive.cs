@@ -41,6 +41,7 @@ namespace V1Bridge.Ror
         static bool engaged, idleSent = true;
         static CharacterBody body;
         static CameraRigController rig;
+        static bool rigFaded = true;
         static Provider provider;
         static PlayerCharacterMasterController quiet;
         /// <summary>RoR2's own handling of the player's keys is skipped for this controller while V1 is driven by ULTRAKILL.
@@ -259,6 +260,7 @@ namespace V1Bridge.Ror
             hiddenParts.Clear();
             nextPartSweep = 0f;
             if (rig != null && rig.hasOverride) rig.SetOverrideCam(null, 0f);
+            if (rig != null) rig.enableFading = rigFaded;
             rig = null;
             if (overlay != null) UnityEngine.Object.Destroy(overlay.transform.parent.gameObject);
             overlay = null;
@@ -374,6 +376,10 @@ namespace V1Bridge.Ror
             if (r != rig)
             {
                 rig = r;
+                // RoR2 fades monsters and props out as its third-person camera closes in on them, so they do not block
+                // the view of the survivor. V1's view is first person: what is close stays solid.
+                rigFaded = rig.enableFading;
+                rig.enableFading = false;
                 // the rig tests its override as a UnityEngine.Object: it has to be a component
                 if (provider == null) provider = Bridge.I.gameObject.AddComponent<Provider>();
                 rig.SetOverrideCam(provider, 0f);
