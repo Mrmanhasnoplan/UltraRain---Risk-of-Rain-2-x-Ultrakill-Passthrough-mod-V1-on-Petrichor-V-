@@ -206,12 +206,18 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   items still reaches it as healing). RoR2 heals a body by whatever its maximum health grew (`RecalculateStats`), and
   that heal is forwarded to ULTRAKILL like any other: the slider recalculates with forwarding muted
   (`HealsReachV1.Muted`), but a level-up or a health item still heals V1 this way (see known issues).
-- Shield is health to V1 (`V1HealthLink.Pool` = full health + full shield): a hit costs what health and shield lost
-  together as a share of the pool, both are put back, both are mirrored at ULTRAKILL's HP share each frame, and heals
-  are a share of the pool. Before, RoR2's shield soaked hits up out of sight (nothing of it shows in ULTRAKILL's HUD)
-  and refilled itself; with Transcendence (1 health, the rest shield) V1 took nothing until the one hit that killed it.
-  Consequence: shield items (Personal Shield Generator, Transcendence) no longer give V1 a recharging layer, they make
-  the pool bigger so each hit costs less. Barrier is untouched: RoR2 spends it first and it decays as usual.
+- Shield (`V1HealthLink.Pool` = full health + full shield; `V1Drive.MirrorHealth`): ULTRAKILL's 100 HP stands for the
+  body's health and shield together, and a hit costs what the two lost as a share of that pool (both are put back on
+  the body; ULTRAKILL's answer decides). Which part of what is left is shield is kept in `V1Drive` (`shieldPts`):
+  any loss of HP comes off the shield first; healing fills health only, whether ULTRAKILL's (blood, parries) or RoR2's;
+  the shield fills only as RoR2 fills it (out of danger 7 s, then half of it a second), which is seen as growth of
+  `hc.shield` since it was last written and passed on as `HEAL` with a matching credit. So that ULTRAKILL's own healing
+  cannot fill the shield's share, RoR2 sends `CAP hp` (999: none) = full health + the shield as it stands, and UkBridge
+  holds V1's HP at or under it. ULTRAKILL counts whole HP, so up to one HP of shield can come back with a heal. The
+  split is re-made in proportion on a new stage. Protocol 9. History: first RoR2's shield soaked hits up unseen (with
+  Transcendence V1 took nothing until the hit that killed it); then, for a few hours on 2026-10-11, shield was simply
+  more health that blood could heal; the owner asked for ULTRAKILL's healing not to reach the shield. Barrier is
+  untouched: RoR2 spends it first and it decays as usual.
 - Growth is not healing (`GrowthIsNotHealing`): RoR2 tops a body up by whatever its maximum health grew, inside
   `CharacterBody.RecalculateStats`; heal forwarding is muted for V1's body for the length of that call, so levels,
   health items and a lifted curse no longer heal V1 in ULTRAKILL.
@@ -256,6 +262,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-11 | maxhealth, with the shield layer (golemplains) | PASS (1 run of the final version, 28/28, 0 real files changed, 0 exceptions) | at level 10: Personal Shield Generator (333 health + 26.6 shield): a 66.6 hit = 19 HP with the shield gone first; 60 HP of healing given in ULTRAKILL stopped at 93 (the limit: full health), shield 1.5; left alone 7 s: 100, shield full. Transcendence (1 + 499.5): a 66.6 hit = 13 HP; 50 HP of healing in ULTRAKILL: 87 -> 87; left alone 5.4 s: 100; a hit of 80% = 80 HP, alive. "Healing in ULTRAKILL" was given with the HEAL message (ULTRAKILL's GetHealth), not by real blood or a parry. One earlier run began at 61 HP: four real hits from the stage's monsters before the test cleared them |
 | 2026-10-11 | maxhealth (golemplains) | before the fixes: FAIL 3 checks (losing Shaped Glass healed V1 60 -> 86; with Transcendence an 18-damage hit and a 109-damage hit both cost V1 nothing, only RoR2's shield). After: PASS (1 run, 23/23, 0 real files changed, 0 exceptions); health re-run afterwards: PASS 22/22 | 18 damage on 90 health = 20 HP; Shaped Glass: max 45, HP unchanged on pickup, the same hit = 40 HP, removal 60 -> 60; level 1 -> 10 (max 90 -> 333): HP 60 -> 60; Transcendence at level 10 (1 health + 499.5 shield): pickup HP unchanged, a fifth-of-health hit = 13 HP (13.3 expected), a hit of 80% of the pool = 80 HP, not dead. Not run: Personal Shield Generator alone, barrier, a real curse (Eclipse 8, void fields) |
 | 2026-10-11 | health (golemplains) | PASS (1 run of the final version, 22/22, 0 real files changed, 0 exceptions) | level 1: max health 90, regen 0; hurt to 60 HP and left alone 8 s: still 60, no RoR2 healing forwarded; body at 54 of 90; setting 200 mid-run gave max health 200 with ULTRAKILL HP still 60 (the first version of this healed V1 to 100: fixed), back to 90 gave 90; the config file was left at 90. The slider itself was not operated in the menu |
 | 2026-10-11 | worm (golemplains) | PASS (1 run, 22/22, 0 real files changed, 0 exceptions); whiplash re-run afterwards as a regression: PASS 27/27 | Magma Worm: 23 hurt boxes on the monster, 23 listed, 23 boxes in ULTRAKILL; 3 of 3 shots aimed at the segment furthest from its head landed, the furthest 33.9 m from its core (segments reach 39.9 m; the old single box reached 7.6 m). Overloading Worm, explosions across several segments and the Whiplash on a worm not run |

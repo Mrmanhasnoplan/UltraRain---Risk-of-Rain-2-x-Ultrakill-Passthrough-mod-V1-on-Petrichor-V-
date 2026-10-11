@@ -88,6 +88,7 @@ namespace V1Bridge.Uk
                     ClearProxies();
                     ClearShots();
                     idle = true;
+                    hpCap = 999;
                     break;
                 case Proto.Size:
                 {
@@ -159,6 +160,9 @@ namespace V1Bridge.Uk
                     break;
                 case Proto.Hurt:
                     Hurt(rest);
+                    break;
+                case Proto.Cap:
+                    if (!int.TryParse(rest.Trim(), out hpCap)) hpCap = 999;
                     break;
                 case Proto.Heal:
                     Heal(rest);

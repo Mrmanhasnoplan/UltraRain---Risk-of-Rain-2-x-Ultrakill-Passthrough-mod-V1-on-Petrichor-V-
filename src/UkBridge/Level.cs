@@ -273,6 +273,8 @@ namespace V1Bridge.Uk
             Net.Send(Proto.Landed + " weapons=" + slots);
         }
 
+        /// <summary>CAP: the most HP V1 may have right now (999: no limit).</summary>
+        int hpCap = 999;
         int lastHp = int.MinValue;
         bool lastDead;
 
@@ -282,6 +284,9 @@ namespace V1Bridge.Uk
             var nm = MonoSingleton<NewMovement>.Instance;
             var cc = MonoSingleton<CameraController>.Instance;
             if (nm == null || cc == null || cc.cam == null) return;
+            // blood and parries heal V1's own health, not what Risk of Rain 2 holds as shield: that share stays down
+            // until Risk of Rain 2 fills it again
+            if (hpCap < 999 && !nm.dead && nm.hp > hpCap) nm.hp = Mathf.Max(1, hpCap);
             var feet = nm.transform.position + Vector3.down * 1.5f;
             var eye = cc.cam.transform.position;
             var e = cc.cam.transform.eulerAngles;

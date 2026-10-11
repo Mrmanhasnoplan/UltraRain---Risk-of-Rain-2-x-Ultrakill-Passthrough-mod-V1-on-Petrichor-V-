@@ -6,7 +6,7 @@ namespace V1Bridge
     {
         public const string Version = "0.1.0";
         /// <summary>Bumped whenever a message or the frame file changes shape; the handshake refuses a mismatch.</summary>
-        public const int Protocol = 8;
+        public const int Protocol = 9;
         /// <summary>Not Ultracraft's 27110, so both can be installed side by side.</summary>
         public const int DefaultPort = 27120;
 
@@ -36,6 +36,7 @@ namespace V1Bridge
         public const string Parts = "PARTS";       // PARTS <id> cx,cy,cz,sx,sy,sz;...: that monster's own hurt boxes this frame (centre and size); they are what V1 can hit, in place of its one box
         public const string Hurt = "HURT";         // HURT <n>: V1 loses n of ULTRAKILL's 100, if ULTRAKILL agrees (dash invincibility...)
         public const string Heal = "HEAL";         // HEAL <x>: V1 gains x of ULTRAKILL's 100
+        public const string Cap = "CAP";           // CAP <hp>: V1's HP may not rise above this for now (999: no limit). The part of V1's health that is Risk of Rain 2 shield, and is down, is not ULTRAKILL's to heal
         public const string Kill = "KILL";         // KILL <id>: that monster died to V1
         public const string Projs = "PROJS";       // PROJS id,x,y,z,radius;...: every hostile projectile in flight
         public const string Parried = "PARRIED";   // PARRIED <monster id>: V1's punch met that monster's melee hit

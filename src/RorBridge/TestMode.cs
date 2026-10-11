@@ -1960,8 +1960,31 @@ namespace V1Bridge.Ror
 
         IEnumerator Whole()
         {
+            // made whole by hand: the shield with it
+            V1Drive.ShieldSyncUntil = Time.time + 1.2f;
             UkLink.Send(Proto.Respawn);
             yield return new WaitForSecondsRealtime(1.5f);
+        }
+
+        /// <summary>Healing as ULTRAKILL gives it (blood, a parry), which is not Risk of Rain 2's to see.</summary>
+        IEnumerator UkHeal(int hp, string key)
+        {
+            int hp0 = V1Drive.UkHp;
+            UkLink.Send(Proto.Heal + " " + hp);
+            yield return new WaitForSecondsRealtime(1.2f);
+            var hc = LocalUserManager.GetFirstLocalUser().cachedBody.healthComponent;
+            metrics[key] = "healing " + hp + " in ULTRAKILL: HP " + hp0 + " -> " + V1Drive.UkHp + " (limit " + V1Drive.HpCap + "), body health " + F(hc.health) + ", shield " + F(hc.shield);
+        }
+
+        /// <summary>Out of danger, Risk of Rain 2 fills the shield, and V1's HP with it.</summary>
+        IEnumerator ShieldBack(string key)
+        {
+            int hp0 = V1Drive.UkHp;
+            float t = Now;
+            while (V1Drive.UkHp < 100 && Now - t < 20f) yield return null;
+            yield return new WaitForSecondsRealtime(0.5f);
+            var hc = LocalUserManager.GetFirstLocalUser().cachedBody.healthComponent;
+            metrics[key] = "left alone: HP " + hp0 + " -> " + V1Drive.UkHp + " after " + F(Now - t) + " s, shield " + F(hc.shield) + " of " + F(hc.fullShield);
         }
 
         /// <summary>What lowers or reshapes V1's Risk of Rain 2 health: Shaped Glass (half the health) and Transcendence
@@ -1976,6 +1999,9 @@ namespace V1Bridge.Ror
             QuietStage(v1);
             yield return new WaitForSecondsRealtime(2f);
             float dmg = v1.maxHealth * 0.2f;
+            // whatever the stage did to V1 before it went quiet is not part of this
+            metrics["hp_at_start"] = V1Drive.UkHp + " (limit " + V1Drive.HpCap + ", " + V1HealthLink.HurtsSent + " hits from the stage so far)";
+            yield return Whole();
 
             // 1. as V1 comes
             yield return PlainHit(v1, dmg, "plain_hit");
@@ -2005,6 +2031,24 @@ namespace V1Bridge.Ror
             Check("levelling up raises the body's health and does not heal V1", v1.level > level0 && hc.fullHealth > max0 + 1f && V1Drive.UkHp == hp0, metrics["levels"]);
             dmg = hc.fullHealth * 0.2f;
 
+            // 2c. a Personal Shield Generator: a layer on top of health that only Risk of Rain 2 fills
+            yield return Whole();
+            hp0 = V1Drive.UkHp;
+            v1.inventory.GiveItem(RoR2Content.Items.PersonalShield, 1);
+            yield return new WaitForSecondsRealtime(1.5f);
+            float poolPsg = hc.fullHealth + hc.fullShield;
+            int healthOnly = Mathf.CeilToInt(hc.fullHealth / poolPsg * 100f - 0.001f);
+            metrics["shield_pickup"] = "health " + F(hc.fullHealth) + " + shield " + F(hc.fullShield) + ", ULTRAKILL HP " + hp0 + " -> " + V1Drive.UkHp;
+            Check("a Personal Shield Generator leaves V1's HP where it was", hc.fullShield > 1f && V1Drive.UkHp == hp0, metrics["shield_pickup"]);
+            yield return PlainHit(v1, dmg, "shield_hit");
+            Check("a hit costs its share of health and shield together, the shield going first", Mathf.Abs(lastCost - dmg / poolPsg * 100f) <= 3f && hc.shield < 0.5f, metrics["shield_hit"] + "; a share of the whole would be " + F(dmg / poolPsg * 100f));
+            yield return UkHeal(60, "shield_ultrakill_heal");
+            Check("ULTRAKILL's healing fills health and stops short of the shield", V1Drive.UkHp >= healthOnly - 1 && V1Drive.UkHp <= healthOnly && hc.shield < poolPsg / 100f && Mathf.Abs(hc.health - hc.fullHealth) < hc.fullHealth * 0.02f, metrics["shield_ultrakill_heal"] + "; full health without shield is " + healthOnly + " HP (ULTRAKILL counts whole HP: up to one of them, " + F(poolPsg / 100f) + " shield, comes with it)");
+            yield return ShieldBack("shield_recharge");
+            Check("left alone, Risk of Rain 2 fills the shield and V1 is at 100", V1Drive.UkHp == 100 && hc.shield > hc.fullShield - 0.5f, metrics["shield_recharge"]);
+            v1.inventory.RemoveItem(RoR2Content.Items.PersonalShield.itemIndex, 1);
+            yield return new WaitForSecondsRealtime(1f);
+
             // 3. Transcendence
             yield return Whole();
             hp0 = V1Drive.UkHp;
@@ -2016,7 +2060,12 @@ namespace V1Bridge.Ror
             yield return PlainHit(v1, dmg, "transcendence_hit");
             int first = lastCost;
             Check("a hit on a transcendent V1 costs its share of health and shield together", Mathf.Abs(first - dmg / pool * 100f) <= 3f, metrics["transcendence_hit"] + "; a share of the whole would be " + F(dmg / pool * 100f));
-            // one that goes through what Risk of Rain 2 calls the shield
+            int afterHit = V1Drive.UkHp;
+            yield return UkHeal(50, "transcendence_ultrakill_heal");
+            Check("ULTRAKILL's healing does nothing for a transcendent V1's shield", V1Drive.UkHp <= afterHit + 1, metrics["transcendence_ultrakill_heal"]);
+            yield return ShieldBack("transcendence_recharge");
+            Check("left alone, the shield comes back and V1 is at 100", V1Drive.UkHp == 100 && hc.shield > hc.fullShield - 1f, metrics["transcendence_recharge"]);
+            // one that goes through most of it
             yield return Whole();
             float big = pool * 0.8f;
             yield return PlainHit(v1, big, "transcendence_big_hit");
