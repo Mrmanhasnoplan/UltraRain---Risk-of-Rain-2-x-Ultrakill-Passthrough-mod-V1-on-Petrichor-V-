@@ -6,7 +6,7 @@ namespace V1Bridge
     {
         public const string Version = "0.1.0";
         /// <summary>Bumped whenever a message or the frame file changes shape; the handshake refuses a mismatch.</summary>
-        public const int Protocol = 9;
+        public const int Protocol = 10;
         /// <summary>Not Ultracraft's 27110, so both can be installed side by side.</summary>
         public const int DefaultPort = 27120;
 
@@ -56,7 +56,7 @@ namespace V1Bridge
         public const string Model = "MODEL";       // MODEL <path> <info> | MODEL none: V1's body, read out of this ULTRAKILL, for character select
         public const string Pull = "PULL";         // PULL <id> <x> <y> <z>: the Whiplash is dragging that monster; its feet are here now
         public const string PullEnd = "PULLEND";   // PULLEND <id> <vx> <vy> <vz>: let go, moving like this
-        public const string Parry = "PARRY";       // PARRY p <projectile id> <dir xyz>: V1's fist caught that projectile
+        public const string Parry = "PARRY";       // PARRY p <projectile id> <dir xyz>: V1's fist caught that projectile; PARRY b <projectile id>: ULTRAKILL blew it up where it was (a beam that hits projectiles)
         public const string Damage = "DMG";        // DMG <id> <multiplier> <head 0|1> <explosion 0|1> <hitter> <x> <y> <z>: V1 hit that monster
         public const string Landed = "LANDED";     // V1 is switched on (movement, camera, weapons, HUD)
         public const string Pose = "P";            // P <feet xyz> <eye xyz> <yaw> <pitch> <roll> <fov> <vel xyz> <grounded> <sliding>

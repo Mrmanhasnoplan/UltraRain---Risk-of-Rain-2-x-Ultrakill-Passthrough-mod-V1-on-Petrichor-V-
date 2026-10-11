@@ -221,6 +221,15 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - Growth is not healing (`GrowthIsNotHealing`): RoR2 tops a body up by whatever its maximum health grew, inside
   `CharacterBody.RecalculateStats`; heal forwarding is muted for V1's body for the length of that call, so levels,
   health items and a lifted curse no longer heal V1 in ULTRAKILL.
+- Sharpshooter against projectiles: ULTRAKILL's `RevolverBeam` with `canHitProjectiles` (the Sharpshooter's ricochet shot)
+  looks for a `Projectile` component on layer 14, sets off `superExplosion` there (the stock explosion for further ones
+  in the same shot), destroys the object and flashes. Each RoR2 projectile's copy now carries ULTRAKILL's own
+  `Projectile`, switched off and inert (`StandInProjectile` skips its `Awake` and `OnTriggerEnter`; `speed` 1 so the
+  beam accepts it; `unparryable`/`undeflectable` so the fist goes on to the `ParryReceiver`; `ignoreExplosions`).
+  `RorShot.OnDestroy` tells the bridge when ULTRAKILL destroyed a copy that the bridge did not remove itself:
+  `PARRY b id`, and RorBridge destroys the RoR2 projectile (no return damage: the explosion is ULTRAKILL's and hurts
+  the stand-ins near it by the usual path). A blown id is not rebuilt for 2 s. Protocol 10. `STATE` now carries
+  `weapon=<name>/revolver<variant>` and `blown=`; `TESTARM n` (tests) picks the arm.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -262,6 +271,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-11 | sharpshooter (golemplains) | PASS (1 run, 21/21, 0 real files changed, 0 exceptions) | revolver turned to the Sharpshooter in 2 presses (`Alternative_Revolver_Twirl/revolver2alt`); alternate fire held 1.3 s, a fireball fired at V1 from 26 m along the aim line, shot released 0.12 s later: 1 blown up on the first shot (ULTRAKILL counts 1), V1 100 -> 100 HP with no hit, the Beetle Guard behind it lost 30. Parry re-run afterwards: 2 runs failed with the Knuckleblaster out (it does not parry; punches came through as x2.5), a third with `TESTARM 0` parried a melee hit and caught the fireball (its one failed check: the Beetle Guard's own swing took the parry before the test's scripted hit arrived) |
 | 2026-10-11 | maxhealth, with the shield layer (golemplains) | PASS (1 run of the final version, 28/28, 0 real files changed, 0 exceptions) | at level 10: Personal Shield Generator (333 health + 26.6 shield): a 66.6 hit = 19 HP with the shield gone first; 60 HP of healing given in ULTRAKILL stopped at 93 (the limit: full health), shield 1.5; left alone 7 s: 100, shield full. Transcendence (1 + 499.5): a 66.6 hit = 13 HP; 50 HP of healing in ULTRAKILL: 87 -> 87; left alone 5.4 s: 100; a hit of 80% = 80 HP, alive. "Healing in ULTRAKILL" was given with the HEAL message (ULTRAKILL's GetHealth), not by real blood or a parry. One earlier run began at 61 HP: four real hits from the stage's monsters before the test cleared them |
 | 2026-10-11 | maxhealth (golemplains) | before the fixes: FAIL 3 checks (losing Shaped Glass healed V1 60 -> 86; with Transcendence an 18-damage hit and a 109-damage hit both cost V1 nothing, only RoR2's shield). After: PASS (1 run, 23/23, 0 real files changed, 0 exceptions); health re-run afterwards: PASS 22/22 | 18 damage on 90 health = 20 HP; Shaped Glass: max 45, HP unchanged on pickup, the same hit = 40 HP, removal 60 -> 60; level 1 -> 10 (max 90 -> 333): HP 60 -> 60; Transcendence at level 10 (1 health + 499.5 shield): pickup HP unchanged, a fifth-of-health hit = 13 HP (13.3 expected), a hit of 80% of the pool = 80 HP, not dead. Not run: Personal Shield Generator alone, barrier, a real curse (Eclipse 8, void fields) |
 | 2026-10-11 | health (golemplains) | PASS (1 run of the final version, 22/22, 0 real files changed, 0 exceptions) | level 1: max health 90, regen 0; hurt to 60 HP and left alone 8 s: still 60, no RoR2 healing forwarded; body at 54 of 90; setting 200 mid-run gave max health 200 with ULTRAKILL HP still 60 (the first version of this healed V1 to 100: fixed), back to 90 gave 90; the config file was left at 90. The slider itself was not operated in the menu |
@@ -330,5 +340,6 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - Mouse sensitivity mapping (Rewired counts → ULTRAKILL look) is untested by a human.
 - The colour/coverage join costs ~5 ms per frame on a worker thread at 720p; a candidate for optimisation in Phase 7.
 - RoR2 settings changed while on the bridge profile are saved to the sandbox, not to the real `Config\config.cfg`.
+- **ULTRAKILL's registry settings are shared with the real game** (found 2026-10-11, not fixed, the owner has been told): Unity `PlayerPrefs` live in `HKCU\Software\Hakita\ULTRAKILL`, outside the save sandbox and outside what `Run-Test.ps1` watches. ULTRAKILL keeps the arm and weapon last used there (`CurArm`, `CurSlo`, `CurVar`, `Slot*Var`...), so the bridge and the real game change each other's; and Unity itself keeps the window there, which after bridge runs reads windowed 1064x598 at X = -31993 (the parked window). Whether the real game then starts off-screen or puts itself right from its own settings has not been checked.
 - `Playlist.directory` and `CustomPaletteSelector` in ULTRAKILL still point at the real `Preferences\Playlists` and
   `Palettes` folders (Cyber Grind playlists, custom palettes); nothing in the bridge writes them, but they are not redirected.

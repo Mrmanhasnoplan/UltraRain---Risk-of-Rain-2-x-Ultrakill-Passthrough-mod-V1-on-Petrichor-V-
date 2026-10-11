@@ -14,10 +14,33 @@ namespace V1Bridge.Uk
         readonly List<int> shotsGone = new List<int>();
         public int Parries;
 
+        public int ShotsBlown;
+        readonly Dictionary<int, float> blownAt = new Dictionary<int, float>();
+
+        /// <summary>Removing a projectile's copy ourselves is not ULTRAKILL destroying it.</summary>
+        static void Remove(GameObject go)
+        {
+            if (go == null) return;
+            var mark = go.GetComponent<RorShot>();
+            if (mark != null) mark.removed = true;
+            Destroy(go);
+        }
+
         void ClearShots()
         {
-            foreach (var go in shots.Values) if (go != null) Destroy(go);
+            foreach (var go in shots.Values) Remove(go);
             shots.Clear();
+        }
+
+        /// <summary>ULTRAKILL destroyed a projectile's copy itself: a beam that can hit projectiles (the Sharpshooter's)
+        /// went through it and blew it up there, with ULTRAKILL's own explosion. Risk of Rain 2's projectile goes too.</summary>
+        public void ShotBlown(int id)
+        {
+            if (!shots.Remove(id)) return;
+            ShotsBlown++;
+            // Risk of Rain 2 lists it for a frame or two more: it is not to be put back
+            blownAt[id] = Time.time;
+            Net.Send(Proto.Parry + " b " + id);
         }
 
         /// <summary>PROJS id,x,y,z,radius;...: every hostile projectile in flight.</summary>
@@ -33,9 +56,16 @@ namespace V1Bridge.Uk
                 int id = int.Parse(a[0]);
                 shotsSeen.Add(id);
                 var pos = new Vector3(F(a[1]), F(a[2]), F(a[3]));
+                if (blownAt.TryGetValue(id, out float when))
+                {
+                    if (Time.time - when < 2f) continue;
+                    blownAt.Remove(id);
+                }
                 if (!shots.TryGetValue(id, out var go) || go == null)
                 {
                     go = new GameObject("ror_shot_" + id);
+                    // built switched off: ULTRAKILL's Projectile must be known as ours before it wakes
+                    go.SetActive(false);
                     go.layer = 14; // Projectile: what the fist looks for
                     if (worldRoot != null) go.transform.SetParent(worldRoot.transform, false);
                     var col = go.AddComponent<SphereCollider>();
@@ -51,6 +81,21 @@ namespace V1Bridge.Uk
                     pr.onParry = new UnityEngine.Events.UnityEvent();
                     int captured = id;
                     pr.onParry.AddListener(() => ShotParried(captured));
+                    // To ULTRAKILL's weapons it is a projectile: a beam that can hit projectiles (the Sharpshooter's
+                    // ricochet shot) finds a Projectile on this layer, sets off an explosion where it is and destroys
+                    // it. The component is ULTRAKILL's own, kept from doing anything itself (StandInProjectile): the
+                    // fist is to go on to the ParryReceiver, and explosions are to leave it be.
+                    var pj = go.AddComponent<Projectile>();
+                    pj.enabled = false;
+                    pj.speed = 1f;
+                    pj.unparryable = true;
+                    pj.undeflectable = true;
+                    pj.ignoreExplosions = true;
+                    var drm = MonoSingleton<DefaultReferenceManager>.Instance;
+                    pj.explosionEffect = drm != null ? drm.explosion : null;
+                    StandInProjectile.Ours.Add(pj);
+                    go.AddComponent<RorShot>().id = id;
+                    go.SetActive(true);
                     shots[id] = go;
                 }
                 go.transform.position = pos;
@@ -59,7 +104,7 @@ namespace V1Bridge.Uk
             foreach (var kv in shots) if (!shotsSeen.Contains(kv.Key)) shotsGone.Add(kv.Key);
             foreach (var id in shotsGone)
             {
-                if (shots[id] != null) Destroy(shots[id]);
+                Remove(shots[id]);
                 shots.Remove(id);
             }
         }
@@ -70,7 +115,7 @@ namespace V1Bridge.Uk
             var cc = MonoSingleton<CameraController>.Instance;
             var dir = cc != null ? cc.transform.forward : Vector3.forward;
             Net.Send(Proto.Parry + " p " + id + " " + S(dir.x) + " " + S(dir.y) + " " + S(dir.z));
-            if (shots.TryGetValue(id, out var go) && go != null) Destroy(go);
+            if (shots.TryGetValue(id, out var go)) Remove(go);
             shots.Remove(id);
         }
 
@@ -88,5 +133,36 @@ namespace V1Bridge.Uk
             }
             catch (Exception e) { Plugin.Log.LogWarning("parry: " + e.Message); }
         }
+    }
+
+    /// <summary>On a Risk of Rain 2 projectile's copy: tells the bridge when ULTRAKILL itself destroys it.</summary>
+    public class RorShot : MonoBehaviour
+    {
+        public int id;
+        /// <summary>The bridge is taking it away (the projectile is gone in Risk of Rain 2, or was parried).</summary>
+        public bool removed;
+
+        void OnDestroy()
+        {
+            if (removed || Bridge.I == null || !gameObject.scene.isLoaded) return;
+            Bridge.I.ShotBlown(id);
+        }
+    }
+
+    /// <summary>The Projectile on a copy is there for ULTRAKILL's weapons to find, not to fly, home or hit anything: it
+    /// never wakes up, and touching something does nothing (Unity sends that even to a switched-off component).</summary>
+    [HarmonyLib.HarmonyPatch(typeof(Projectile))]
+    static class StandInProjectile
+    {
+        public static readonly HashSet<Projectile> Ours = new HashSet<Projectile>();
+
+        static bool NotOurs(Projectile p)
+        {
+            if (Ours.Count > 256) Ours.RemoveWhere(x => x == null);
+            return !Ours.Contains(p);
+        }
+
+        [HarmonyLib.HarmonyPrefix, HarmonyLib.HarmonyPatch("Awake")] static bool Awake(Projectile __instance) => NotOurs(__instance);
+        [HarmonyLib.HarmonyPrefix, HarmonyLib.HarmonyPatch("OnTriggerEnter")] static bool OnTriggerEnter(Projectile __instance) => NotOurs(__instance);
     }
 }

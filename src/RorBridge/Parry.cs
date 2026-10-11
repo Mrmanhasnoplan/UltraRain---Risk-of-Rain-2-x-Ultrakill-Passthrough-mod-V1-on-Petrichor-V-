@@ -29,7 +29,7 @@ namespace V1Bridge.Ror
         static readonly Dictionary<int, float> punchedAt = new Dictionary<int, float>();
         static readonly Dictionary<int, ProjectileController> shots = new Dictionary<int, ProjectileController>();
         static readonly StringBuilder sb = new StringBuilder(512);
-        public static int MeleeParries, ShotParries, ShotsListed;
+        public static int MeleeParries, ShotParries, ShotsListed, ShotsBlown;
 
         static string S(float f) => f.ToString("0.###", CultureInfo.InvariantCulture);
 
@@ -131,7 +131,28 @@ namespace V1Bridge.Ror
             if (cmd != Proto.Parry) return;
             var a = rest.Split(' ');
             var v1 = V1Drive.Body;
-            if (v1 == null || a.Length < 2 || a[0] != "p") return;
+            if (v1 == null || a.Length < 2) return;
+            if (a[0] == "b")
+            {
+                // ULTRAKILL blew its copy up where it flew (the Sharpshooter's shot through it): the explosion and what
+                // it does to the monsters round it are ULTRAKILL's; here the projectile is simply gone
+                ShotsBlown++;
+                if (shots.TryGetValue(int.Parse(a[1]), out var blown) && blown != null)
+                {
+                    shots.Remove(int.Parse(a[1]));
+                    Object.Destroy(blown.gameObject);
+                    return;
+                }
+                // it had just landed here: the hit it left waiting goes with it
+                for (int i = held.Count - 1; i >= 0; i--)
+                {
+                    if (!held[i].shot) continue;
+                    held.RemoveAt(i);
+                    break;
+                }
+                return;
+            }
+            if (a[0] != "p") return;
             if (!shots.TryGetValue(int.Parse(a[1]), out var p) || p == null)
             {
                 // it has already landed here: the hit it left waiting is the one the fist caught

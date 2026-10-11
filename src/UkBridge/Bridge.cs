@@ -132,6 +132,13 @@ namespace V1Bridge.Uk
                     foreach (var ex in go.GetComponentsInChildren<Explosion>()) { ex.damage = 0; ex.enemyDamageMultiplier = 1f; ex.harmless = false; ex.canHit = AffectedSubjects.EnemiesOnly; }
                     break;
                 }
+                case "TESTARM":
+                {
+                    // (tests) the arm V1 punches with: 0 is the Feedbacker, the one that parries
+                    var fc = MonoSingleton<FistControl>.Instance;
+                    if (fc != null && int.TryParse(rest.Trim(), out int arm)) fc.ArmChange(arm);
+                    break;
+                }
                 case "TESTOIL":
                 {
                     // (tests) gasoline on that monster, as the Firestarter leaves it
@@ -204,6 +211,19 @@ namespace V1Bridge.Uk
             }
         }
 
+        /// <summary>The weapon V1 has out: its name and, for a revolver, which variant (2: the Sharpshooter).</summary>
+        static string WeaponInfo()
+        {
+            try
+            {
+                var gc = MonoSingleton<GunControl>.Instance;
+                if (gc == null || gc.currentWeapon == null) return "none";
+                var rev = gc.currentWeapon.GetComponent<Revolver>();
+                return gc.currentWeapon.name.Replace("(Clone)", "").Replace(' ', '_') + (rev != null ? "/revolver" + rev.gunVariation + (rev.altVersion ? "alt" : "") : "");
+            }
+            catch (Exception e) { return "err:" + e.Message.Replace(' ', '_'); }
+        }
+
         string PulledInfo()
         {
             foreach (var p in proxies.Values)
@@ -234,7 +254,7 @@ namespace V1Bridge.Uk
 
         string StateLine()
         {
-            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " volumes=" + VolumeInfo + " audio=" + (levelPrepared ? AudioInfo() : "-") + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " parts=" + PartsShown +" dmg=" + DamageReports + " hook=" + HookInfo() + " pulled=" + PulledInfo() + " coins=" + (MonoSingleton<ObjectTracker>.Instance != null ? MonoSingleton<ObjectTracker>.Instance.zappablesList.Count : -1) + " nails=" + NailCount() + " conductions=" + Conductions + " launches=" + Launches + " knocks=" + Knocks + " pulls=" + Pulls + " shots=" + shots.Count + " parries=" + Parries + " res=" + Screen.width + "x" + Screen.height
+            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " volumes=" + VolumeInfo + " audio=" + (levelPrepared ? AudioInfo() : "-") + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " parts=" + PartsShown +" dmg=" + DamageReports + " hook=" + HookInfo() + " pulled=" + PulledInfo() + " coins=" + (MonoSingleton<ObjectTracker>.Instance != null ? MonoSingleton<ObjectTracker>.Instance.zappablesList.Count : -1) + " nails=" + NailCount() + " conductions=" + Conductions + " launches=" + Launches + " knocks=" + Knocks + " pulls=" + Pulls + " shots=" + shots.Count + " blown=" + ShotsBlown + " weapon=" + WeaponInfo() + " parries=" + Parries + " res=" + Screen.width + "x" + Screen.height
                    + " t=" + Time.unscaledTime.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " blocked=" + SaveGuard.Blocked
                    + " saves=" + GameProgressSaver.BaseSavePath.Replace(' ', '?');
         }

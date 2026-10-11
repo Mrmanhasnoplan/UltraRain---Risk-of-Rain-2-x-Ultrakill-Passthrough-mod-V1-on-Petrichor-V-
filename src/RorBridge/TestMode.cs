@@ -92,6 +92,7 @@ namespace V1Bridge.Ror
                 case "worm": body = WormTest(); break;
                 case "health": body = HealthTest(); break;
                 case "maxhealth": body = MaxHealthItems(); break;
+                case "sharpshooter": body = Sharpshooter(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -875,6 +876,8 @@ namespace V1Bridge.Ror
             {
                 if (report.victimBody == v1 && hurtBy.Count < 10) hurtBy.Add((report.attackerBody != null ? report.attackerBody.name : "nobody") + " " + F(report.damageDealt) + " @" + F(Now));
             };
+            // the Feedbacker: ULTRAKILL remembers the arm last used, and the Knuckleblaster does not parry
+            UkLink.Send("TESTARM 0");
             yield return new WaitForSecondsRealtime(2f);
             float unit = Monsters.UnitDamage(v1);
 
@@ -2071,6 +2074,66 @@ namespace V1Bridge.Ror
             yield return PlainHit(v1, big, "transcendence_big_hit");
             Check("a hit of four fifths of the whole costs about 80 HP and does not kill", !V1Drive.UkDead && Mathf.Abs(lastCost - 80) <= 4, metrics["transcendence_big_hit"]);
             Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && hc.alive);
+            yield return BackToTitle();
+        }
+
+        /// <summary>The Sharpshooter's ricochet shot through a Risk of Rain 2 projectile blows it up, as it does ULTRAKILL's.</summary>
+        IEnumerator Sharpshooter()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            var owner = SpawnAhead("BeetleGuardMaster", 34f, false);
+            if (!Check("spawned a Beetle Guard to own the fireballs", owner != null)) yield break;
+            owner.baseMaxHealth = 100000f;
+            owner.MarkAllStatsDirty();
+            yield return new WaitForSecondsRealtime(2.5f);
+            var fireball = LegacyResourcesAPI.Load<GameObject>("Prefabs/Projectiles/Fireball");
+            if (!Check("fireball prefab found", fireball != null)) yield break;
+
+            // the revolver, turned to its Sharpshooter
+            string weapon = "?";
+            for (int i = 0; i < 5; i++)
+            {
+                yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.Alpha1 } });
+                yield return new WaitForSecondsRealtime(1.1f);
+                yield return UkState();
+                weapon = StateValue(stateReply, "weapon") ?? "?";
+                metrics["weapon_after_" + (i + 1) + "_presses"] = weapon;
+                if (weapon.Contains("/revolver2")) break;
+            }
+            if (!Check("V1 has the Sharpshooter out", weapon.Contains("/revolver2"), weapon)) yield break;
+
+            int blown0 = Parry.ShotsBlown, hurts0 = V1HealthLink.HurtsSent, hp0 = V1Drive.UkHp;
+            float ownerHp0 = owner.healthComponent.combinedHealth;
+            int ukBlown = 0, tries = 0;
+            for (; tries < 6 && Parry.ShotsBlown == blown0; tries++)
+            {
+                yield return WaitVulnerable();
+                yield return AimAt(() => owner.corePosition);
+                // the shot is wound up with the alternate fire held, and goes when it is let go
+                V1Drive.Script = () => new V1Drive.Frame { buttons = 2 };
+                yield return new WaitForSecondsRealtime(1.3f);
+                Vector3 eye = V1Drive.ToRor(V1Drive.Latest.eye);
+                Vector3 from = eye + (owner.corePosition - eye).normalized * 26f;
+                RoR2.Projectile.ProjectileManager.instance.FireProjectile(fireball, from, Quaternion.LookRotation(eye - from), owner.gameObject, 10f, 0f, false, DamageColorIndex.Default, null, 14f);
+                // a moment for its copy to be in ULTRAKILL, on the line the shot will take
+                yield return new WaitForSecondsRealtime(0.12f);
+                V1Drive.Script = () => default;
+                float t = Now;
+                while (Now - t < 2.5f && Parry.ShotsBlown == blown0) yield return null;
+                yield return new WaitForSecondsRealtime(1.2f);
+            }
+            yield return UkState();
+            int.TryParse(StateValue(stateReply, "blown"), out ukBlown);
+            metrics["sharpshooter"] = (Parry.ShotsBlown - blown0) + " blown up after " + tries + " shots (ULTRAKILL counts " + ukBlown + "); V1 HP " + hp0 + " -> " + V1Drive.UkHp + ", " + (V1HealthLink.HurtsSent - hurts0) + " hits on V1; the owner 34 m off lost " + F(ownerHp0 - owner.healthComponent.combinedHealth) + "; last hit " + Monsters.LastHit;
+            Check("a Sharpshooter shot through a fireball blew it up", Parry.ShotsBlown > blown0 && ukBlown >= 1, metrics["sharpshooter"]);
+            yield return SnapRor("ror2-after-shot");
+            yield return SnapUk("uk");
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
             yield return BackToTitle();
         }
 
