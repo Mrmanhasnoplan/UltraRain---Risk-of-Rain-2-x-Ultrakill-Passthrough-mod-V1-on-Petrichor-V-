@@ -6,7 +6,7 @@ namespace V1Bridge
     {
         public const string Version = "0.1.0";
         /// <summary>Bumped whenever a message or the frame file changes shape; the handshake refuses a mismatch.</summary>
-        public const int Protocol = 7;
+        public const int Protocol = 8;
         /// <summary>Not Ultracraft's 27110, so both can be installed side by side.</summary>
         public const int DefaultPort = 27120;
 
@@ -33,6 +33,7 @@ namespace V1Bridge
         public const string GeoClear = "GEOCLR";   // the stage is gone
         public const string Probe = "PROBE";       // PROBE <x> <y> <z> -> PROBED <ground y below that point> <collider> | PROBED none
         public const string Ents = "ENTS";         // ENTS id,x,y,z,w,h,hp,light,wet;...: every monster alive (feet, width, height, ULTRAKILL damage units left, 1 if the Whiplash pulls it to V1, 1 if it stands in water)
+        public const string Parts = "PARTS";       // PARTS <id> cx,cy,cz,sx,sy,sz;...: that monster's own hurt boxes this frame (centre and size); they are what V1 can hit, in place of its one box
         public const string Hurt = "HURT";         // HURT <n>: V1 loses n of ULTRAKILL's 100, if ULTRAKILL agrees (dash invincibility...)
         public const string Heal = "HEAL";         // HEAL <x>: V1 gains x of ULTRAKILL's 100
         public const string Kill = "KILL";         // KILL <id>: that monster died to V1

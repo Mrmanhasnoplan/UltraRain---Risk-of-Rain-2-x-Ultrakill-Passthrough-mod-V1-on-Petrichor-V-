@@ -193,6 +193,13 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - The Newt: `ENTS` lists hostile teams only, and the Bazaar's shopkeeper (`ShopkeeperBody`) is on the Neutral team, so
   he had no stand-in and V1's weapons passed through him. `Monsters.IsNewt` lets him through the filter; every other
   None/Neutral body (pots, the Trial Gong, other bystanders) is still left out. He counts as heavy for the Whiplash.
+- Worms (`MagmaWormBody`, `ElectricWormBody`; `Monsters.Segmented`) are given to ULTRAKILL by their own hurt boxes: after
+  `ENTS`, `PARTS id cx,cy,cz,sx,sy,sz;...` lists the world bounds of every enabled `HurtBox` collider each frame, and
+  UkBridge keeps one unit-cube box per entry on the stand-in (layer 10 "Body" with an `EnemyIdentifierIdentifier`, a
+  depth-only occluder, and a layer-12 trigger for the Whiplash), moved and scaled each frame; the stand-in's one
+  head/body box, whip box and occluder are switched off. No part is a head: RoR2 gives the worm no weak point. The
+  boxes are axis-aligned bounds, so slightly generous on a turned segment. Protocol 8. This is the first use of the
+  "mirror the real hurt boxes" plan; every other monster is still one box from its capsule.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -234,6 +241,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-11 | worm (golemplains) | PASS (1 run, 22/22, 0 real files changed, 0 exceptions); whiplash re-run afterwards as a regression: PASS 27/27 | Magma Worm: 23 hurt boxes on the monster, 23 listed, 23 boxes in ULTRAKILL; 3 of 3 shots aimed at the segment furthest from its head landed, the furthest 33.9 m from its core (segments reach 39.9 m; the old single box reached 7.6 m). Overloading Worm, explosions across several segments and the Whiplash on a worm not run |
 | 2026-10-11 | newt (bazaar) | PASS (1 run, 21/21, 0 real files changed, 0 exceptions) | the Newt appears 18 s after a run started straight in the Bazaar; team Neutral, 500,000 health, mass 100,000; ULTRAKILL has his stand-in; a shotgun pellet x0.25 took 1.5 off him. His reaction (kicking V1 out of the Bazaar) was not provoked. The Bazaar itself: 227 colliders, V1 stands on it |
 | 2026-10-11 | closeup (golemplains) | PASS (1 run, 24/24, 0 real files changed, 0 exceptions) | Beetle Guard with its nearest hurt box 0.41 m from the eye: fade 1, solid in the screenshot; chest 0.48 m from the eye: fade 1. Stage geometry that fades by its own shader, if any does, is not covered |
 | 2026-10-11 | geometry (snowyforest, Siphoned Forest) | before: FAIL, 4 of 81 ground points, V1 fell through (all 23 GPU-read meshes came back as zeros). After: PASS 1 of 2 runs (30/30; 0 real files changed); the other run had the ground right too (81/81) and failed only the after-walk checks, V1 having spawned on a cliff top and walked off it | 353 colliders, 326,845 triangles, 25 meshes straight from Direct3D; export 489 ms, build in ULTRAKILL 412 ms; ground equal within 6 mm at 81/81 points; V1 walked 35 m, feet 5 mm above RoR2's ground. Spawn point differs per run |
@@ -275,7 +283,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 - The `combat` scenario is not deterministic: the scripted punch sometimes misses a Lemurian spawned 1.5 m away, and the
   "own attack" check can be confused by regeneration or invincibility frames. The mechanics behind both passed in other runs.
 - RoR2's passive regeneration is forwarded like any heal, so V1 slowly regenerates in ULTRAKILL (hard damage still caps it).
-- A monster's stand-in is one box from its movement capsule (x1.15), not its real hurt boxes; big or oddly shaped bosses will be off.
+- A monster's stand-in is one box from its movement capsule (x1.15), not its real hurt boxes; big or oddly shaped bosses will be off. The two worms are the exception (see Decisions).
 - Overheal (ULTRAKILL HP above 100) is not shown on the RoR2 body.
 - The Whiplash pull starts when the hook key is released (ULTRAKILL's rule); a pulled monster ignores RoR2 collision while dragged. Flying monsters without a CharacterMotor are moved by transform and untested.
 - The user's bridge config currently has DamageCoefficient = 1 and MouseScale = 2.1 (set through the in-game menu, so that menu works).

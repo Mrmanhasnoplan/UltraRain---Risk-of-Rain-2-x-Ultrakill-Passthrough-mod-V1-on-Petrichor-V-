@@ -20,6 +20,9 @@ namespace V1Bridge.Ror
         public static int Listed, HitsApplied, KillsByV1;
         /// <summary>The last hit V1 landed, for the tests.</summary>
         public static string LastHit = "";
+        /// <summary>Where the last hit landed, in the stage, and on whom.</summary>
+        public static Vector3 LastHitAt;
+        public static CharacterBody LastHitOn;
         static bool hooked;
 
         static string S(float f) => f.ToString("0.###", CultureInfo.InvariantCulture);
@@ -97,15 +100,58 @@ namespace V1Bridge.Ror
                 sb.Append(id).Append(',').Append(S(feet.x)).Append(',').Append(S(feet.y)).Append(',').Append(S(feet.z)).Append(',')
                   .Append(S(w * V1Drive.K)).Append(',').Append(S(h * V1Drive.K)).Append(',').Append(S(b.healthComponent.combinedHealth / unit)).Append(',').Append(Light(b) ? 1 : 0).Append(',').Append(InWater(b.corePosition - Vector3.up * (h * 0.5f), true) ? 1 : 0).Append(';');
                 heights[id] = h;
+                if (Segmented(b)) segmentedNow.Add(b);
             }
             Listed = byId.Count;
             UkLink.Send(sb.ToString());
+            foreach (var b in segmentedNow) SendParts(b);
+            segmentedNow.Clear();
             bool wet = InWater(v1.footPosition);
             if (wet != V1Wet)
             {
                 V1Wet = wet;
                 UkLink.Send(Proto.Wet + " " + (wet ? 1 : 0));
             }
+        }
+
+        static readonly Dictionary<BodyIndex, bool> segmentedKinds = new Dictionary<BodyIndex, bool>();
+        static readonly List<CharacterBody> segmentedNow = new List<CharacterBody>();
+        /// <summary>Hurt boxes listed for the last segmented monster, for the tests.</summary>
+        public static int PartsListed;
+
+        /// <summary>A monster that is a chain of parts with no one shape (the worms): its capsule says nothing about where
+        /// it can be hit, so ULTRAKILL is given its hurt boxes themselves.</summary>
+        public static bool Segmented(CharacterBody b)
+        {
+            if (!segmentedKinds.TryGetValue(b.bodyIndex, out bool yes))
+            {
+                string name = BodyCatalog.GetBodyName(b.bodyIndex);
+                yes = name == "MagmaWormBody" || name == "ElectricWormBody";
+                segmentedKinds[b.bodyIndex] = yes;
+            }
+            return yes;
+        }
+
+        /// <summary>PARTS id cx,cy,cz,sx,sy,sz;...: where each of that monster's hurt boxes is right now, and how big.</summary>
+        static void SendParts(CharacterBody b)
+        {
+            sb.Length = 0;
+            sb.Append(Proto.Parts).Append(' ').Append(b.GetInstanceID()).Append(' ');
+            int n = 0;
+            var group = b.hurtBoxGroup;
+            if (group != null && group.hurtBoxes != null)
+            {
+                foreach (var hb in group.hurtBoxes)
+                {
+                    if (hb == null || hb.collider == null || !hb.collider.enabled || !hb.gameObject.activeInHierarchy) continue;
+                    var bounds = hb.collider.bounds;
+                    Vector3 c = V1Drive.ToUk(bounds.center), s = bounds.size * V1Drive.K;
+                    sb.Append(S(c.x)).Append(',').Append(S(c.y)).Append(',').Append(S(c.z)).Append(',').Append(S(s.x)).Append(',').Append(S(s.y)).Append(',').Append(S(s.z)).Append(';');
+                    n++;
+                }
+            }
+            PartsListed = n;
+            UkLink.Send(sb.ToString());
         }
 
         static readonly Dictionary<int, float> heights = new Dictionary<int, float>();
@@ -235,6 +281,8 @@ namespace V1Bridge.Ror
                 damageColorIndex = DamageColorIndex.Default,
                 damageType = explosion ? DamageType.AOE : DamageType.Generic
             };
+            LastHitAt = info.position;
+            LastHitOn = victim;
             float before = victim.healthComponent.combinedHealth;
             victim.healthComponent.TakeDamage(info);
             if (!info.rejected && GlobalEventManager.instance != null)

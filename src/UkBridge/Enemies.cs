@@ -24,6 +24,9 @@ namespace V1Bridge.Uk
         /// <summary>The Whiplash pulls it to V1 (otherwise V1 to it), and it is being pulled right now.</summary>
         public bool light, pulled;
         public float knockedAt = -10f;
+        /// <summary>A monster given by its own hurt boxes (PARTS): these are what can be hit, the head and body boxes are off.</summary>
+        public bool segmented;
+        public readonly List<GameObject> parts = new List<GameObject>(), whips = new List<GameObject>();
         public Rigidbody rootRb;
         public readonly CancellationTokenSource life = new CancellationTokenSource();
         Vector3 cachedPos, cachedHead;
@@ -172,6 +175,90 @@ namespace V1Bridge.Uk
                 proxies.Remove(id);
                 oilSent.Remove(id);
             }
+        }
+
+        public int PartsShown;
+
+        /// <summary>PARTS id cx,cy,cz,sx,sy,sz;...: that monster is the hurt boxes Risk of Rain 2 gives it, each a box of its
+        /// own to hit, to hook and to hide ULTRAKILL's effects behind, moved every frame. Its one head-and-body box goes.</summary>
+        void ApplyParts(string rest)
+        {
+            if (!levelPrepared) return;
+            int sp = rest.IndexOf(' ');
+            if (!int.TryParse(sp < 0 ? rest : rest.Substring(0, sp), out int id) || !proxies.TryGetValue(id, out var p) || p == null) return;
+            if (!p.segmented)
+            {
+                p.segmented = true;
+                p.body.enabled = false;
+                p.headBox.enabled = false;
+                p.whipBox.enabled = false;
+                var mr = p.occluder.GetComponent<MeshRenderer>();
+                if (mr != null) mr.enabled = false;
+            }
+            int n = 0;
+            if (sp >= 0)
+            {
+                foreach (var entry in rest.Substring(sp + 1).Split(';'))
+                {
+                    if (entry.Length == 0) continue;
+                    var a = entry.Split(',');
+                    if (a.Length < 6) continue;
+                    if (n == p.parts.Count) AddPart(p);
+                    GameObject part = p.parts[n], whip = p.whips[n];
+                    var c = new Vector3(F(a[0]), F(a[1]), F(a[2]));
+                    var s = new Vector3(F(a[3]), F(a[4]), F(a[5]));
+                    if (!part.activeSelf) { part.SetActive(true); whip.SetActive(true); }
+                    part.transform.position = c;
+                    part.transform.localScale = s;
+                    whip.transform.position = c;
+                    whip.transform.localScale = s;
+                    n++;
+                }
+            }
+            for (int i = n; i < p.parts.Count; i++)
+            {
+                if (!p.parts[i].activeSelf) continue;
+                p.parts[i].SetActive(false);
+                p.whips[i].SetActive(false);
+            }
+            PartsShown = n;
+        }
+
+        /// <summary>One more box on a segmented stand-in: a unit cube, placed and sized by PARTS.</summary>
+        void AddPart(RorProxy p)
+        {
+            var part = new GameObject("part");
+            part.SetActive(false);
+            part.transform.SetParent(p.transform, false);
+            part.layer = 10;
+            part.tag = "Body";
+            part.AddComponent<BoxCollider>();
+            part.AddComponent<EnemyIdentifierIdentifier>().eid = p.eid;
+            var rb = part.AddComponent<Rigidbody>();
+            rb.isKinematic = true;
+            rb.useGravity = false;
+            var occ = new GameObject("occluder");
+            occ.layer = 8;
+            occ.transform.SetParent(part.transform, false);
+            occ.transform.localScale = Vector3.one * 0.8f;
+            occ.AddComponent<MeshFilter>().sharedMesh = CubeMesh();
+            var omr = occ.AddComponent<MeshRenderer>();
+            omr.sharedMaterial = OccluderMaterial();
+            omr.shadowCastingMode = ShadowCastingMode.Off;
+            omr.receiveShadows = false;
+            omr.lightProbeUsage = LightProbeUsage.Off;
+            omr.reflectionProbeUsage = ReflectionProbeUsage.Off;
+            // and its own hold for the Whiplash, as the whole stand-in has
+            var whip = new GameObject("whip");
+            whip.SetActive(false);
+            whip.transform.SetParent(p.transform, false);
+            whip.layer = 12;
+            whip.AddComponent<BoxCollider>().isTrigger = true;
+            var wrb = whip.AddComponent<Rigidbody>();
+            wrb.isKinematic = true;
+            wrb.useGravity = false;
+            p.parts.Add(part);
+            p.whips.Add(whip);
         }
 
         static void Resize(RorProxy p, float w, float h)

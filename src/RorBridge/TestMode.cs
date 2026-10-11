@@ -89,6 +89,7 @@ namespace V1Bridge.Ror
                 case "items": body = ItemsHidden(); break;
                 case "closeup": body = CloseUp(); break;
                 case "newt": body = NewtTest(); break;
+                case "worm": body = WormTest(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -1820,6 +1821,75 @@ namespace V1Bridge.Ror
             yield return SnapUk("uk");
             metrics["newt_hit"] = Monsters.LastHit + "; health " + F(hp0) + " -> " + F(newt != null ? newt.healthComponent.combinedHealth : 0f);
             Check("V1's shot landed on the Newt", Monsters.HitsApplied > hits0 && WasHit(newt, "revolver", "shotgun", "shotgunzone", "nail", "railcannon", "explosion", "punch"), metrics["newt_hit"] + "; hit by " + HitsOn(newt));
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
+            yield return BackToTitle();
+        }
+
+        /// <summary>A Magma Worm is hit where Risk of Rain 2 has its hurt boxes: every segment, not one box at its head.</summary>
+        IEnumerator WormTest()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            var worm = SpawnAhead("MagmaWormMaster", 30f, false);
+            if (!Check("spawned a Magma Worm", worm != null)) yield break;
+            worm.baseMaxHealth = 1000000f;
+            worm.MarkAllStatsDirty();
+            Check("it is one of the segmented kind", Monsters.Segmented(worm), BodyCatalog.GetBodyName(worm.bodyIndex));
+            float t = Now;
+            int ukParts = 0;
+            while (Now - t < 20f)
+            {
+                yield return UkState();
+                int.TryParse(StateValue(stateReply, "parts"), out ukParts);
+                if (Monsters.PartsListed >= 5 && ukParts >= 5) break;
+                yield return new WaitForSecondsRealtime(0.5f);
+            }
+            int boxes = worm.hurtBoxGroup != null ? worm.hurtBoxGroup.hurtBoxes.Length : 0;
+            metrics["worm_hurt_boxes"] = boxes + " on the monster, " + Monsters.PartsListed + " listed, ULTRAKILL has " + ukParts;
+            Check("ULTRAKILL has a box for each of its hurt boxes", Monsters.PartsListed >= 5 && Mathf.Abs(ukParts - Monsters.PartsListed) <= 1, metrics["worm_hurt_boxes"]);
+            // the one box it used to have: its radius round its core
+            float oldReach = Mathf.Max(worm.radius, 0.5f) * 1.15f * 1.75f;
+            metrics["worm_old_box_reach_m"] = F(oldReach);
+            float best = 0f, length = 0f;
+            int landed = 0, shots = 0;
+            for (int attempt = 0; attempt < 14 && (landed < 3 || best < oldReach + 3f); attempt++)
+            {
+                // the segment in sight that is furthest from its head
+                Vector3 eye = V1Drive.ToRor(V1Drive.Latest.eye);
+                HurtBox pick = null;
+                float far = 0f;
+                foreach (var hb in worm.hurtBoxGroup.hurtBoxes)
+                {
+                    if (hb == null || hb.collider == null || !hb.collider.enabled) continue;
+                    float d = Vector3.Distance(hb.collider.bounds.center, worm.corePosition);
+                    length = Mathf.Max(length, d);
+                    if (d <= far || Physics.Linecast(eye, hb.collider.bounds.center, LayerIndex.world.mask, QueryTriggerInteraction.Ignore)) continue;
+                    far = d;
+                    pick = hb;
+                }
+                if (pick == null) { yield return new WaitForSecondsRealtime(0.7f); continue; }
+                yield return AimAt(() => pick != null ? pick.collider.bounds.center : worm.corePosition);
+                int hits0 = Monsters.HitsApplied;
+                yield return Tap(new V1Drive.Frame { buttons = 1 });
+                shots++;
+                t = Now;
+                while (Monsters.HitsApplied == hits0 && Now - t < 0.8f) yield return null;
+                if (Monsters.HitsApplied > hits0 && Monsters.LastHitOn == worm)
+                {
+                    landed++;
+                    best = Mathf.Max(best, Vector3.Distance(Monsters.LastHitAt, worm.corePosition));
+                }
+                yield return new WaitForSecondsRealtime(0.5f);
+            }
+            metrics["worm_shots"] = landed + " of " + shots + " landed; furthest from its core " + F(best) + " m (segments reach " + F(length) + " m from it; the old box reached " + F(oldReach) + " m)";
+            Check("shots at its body land", landed >= 1, metrics["worm_shots"]);
+            Check("and land where the old single box never reached", best > oldReach + 3f, metrics["worm_shots"]);
+            yield return SnapRor("ror2-worm");
+            yield return SnapUk("uk");
             Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
             yield return BackToTitle();
         }
