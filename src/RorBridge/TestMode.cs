@@ -88,6 +88,7 @@ namespace V1Bridge.Ror
                 case "ping": body = PingTest(); break;
                 case "items": body = ItemsHidden(); break;
                 case "closeup": body = CloseUp(); break;
+                case "newt": body = NewtTest(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -1761,6 +1762,64 @@ namespace V1Bridge.Ror
                 }
                 yield return SnapRor("ror2-chest-close");
             }
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
+            yield return BackToTitle();
+        }
+
+        /// <summary>The Newt in the Bazaar can be hit by V1 (run with --v1bridge-stage bazaar).</summary>
+        IEnumerator NewtTest()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            yield return new WaitForSecondsRealtime(2f);
+            metrics["stage"] = V1Drive.Stage.objects + " colliders, " + V1Drive.Stage.unreadable + " meshes from the graphics card (" + V1Drive.Stage.readBack + " straight from Direct3D), skipped " + V1Drive.Stage.skipped + (V1Drive.Stage.problem != null ? ", " + V1Drive.Stage.problem : "");
+            Check("V1 is standing in the Bazaar", V1Drive.Latest.grounded, metrics["stage"]);
+            CharacterBody newt = null;
+            var others = new List<string>();
+            // he is put in a moment after the Bazaar opens
+            float waited = Now;
+            while (newt == null && Now - waited < 25f)
+            {
+                others.Clear();
+                foreach (var b in CharacterBody.readOnlyInstancesList)
+                {
+                    if (b == null || b == v1) continue;
+                    others.Add(b.name.Replace("(Clone)", "") + ":" + (b.teamComponent != null ? b.teamComponent.teamIndex.ToString() : "no team"));
+                    if (Monsters.IsNewt(b)) newt = b;
+                }
+                if (newt == null) yield return new WaitForSecondsRealtime(0.5f);
+            }
+            metrics["newt_seconds"] = F(Now - waited);
+            var keeper = BazaarController.instance != null ? BazaarController.instance.shopkeeper : null;
+            metrics["bazaar_shopkeeper_object"] = BazaarController.instance == null ? "no BazaarController" : keeper == null ? "none" : keeper.name + ", active " + keeper.activeInHierarchy + ", body " + (keeper.GetComponent<CharacterBody>() != null);
+            metrics["newt_body_index"] = ((int)BodyCatalog.FindBodyIndex("ShopkeeperBody")).ToString();
+            metrics["bodies_in_the_bazaar"] = string.Join(", ", others.ToArray());
+            if (!Check("the Newt is here", newt != null, metrics["bodies_in_the_bazaar"])) yield break;
+            float mass = newt.characterMotor != null ? newt.characterMotor.mass : newt.rigidbody != null ? newt.rigidbody.mass : -1f;
+            metrics["newt"] = "team " + newt.teamComponent.teamIndex + ", health " + F(newt.healthComponent.combinedHealth) + ", " + F(Vector3.Distance(newt.corePosition, v1.corePosition)) + " m away, mass " + F(mass) + ", light " + Monsters.Light(newt);
+            yield return UkState();
+            Check("ULTRAKILL has a stand-in for him", Monsters.Listed >= 1 && StateValue(stateReply, "proxies") == Monsters.Listed.ToString(), Monsters.Listed + " listed, ULTRAKILL has " + StateValue(stateReply, "proxies"));
+            // from a few metres in front of him, wherever the Bazaar put V1 down
+            Vector3 stand = newt.corePosition + (v1.corePosition - newt.corePosition).normalized * 9f;
+            if (Physics.Raycast(stand + Vector3.up * 10f, Vector3.down, out var ground, 40f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore)) stand = ground.point;
+            V1Drive.Teleport(stand + Vector3.up * 0.3f, 0f);
+            yield return new WaitForSecondsRealtime(1.5f);
+            float hp0 = newt.healthComponent.combinedHealth;
+            int hits0 = Monsters.HitsApplied;
+            Monsters.HitLog.Clear();
+            for (int attempt = 0; attempt < 3 && Monsters.HitsApplied == hits0; attempt++)
+            {
+                yield return AimAt(() => newt.corePosition);
+                yield return Tap(new V1Drive.Frame { buttons = 1 });
+                float t = Now;
+                while (Monsters.HitsApplied == hits0 && Now - t < 1.5f) yield return null;
+            }
+            yield return SnapRor("ror2-newt");
+            yield return SnapUk("uk");
+            metrics["newt_hit"] = Monsters.LastHit + "; health " + F(hp0) + " -> " + F(newt != null ? newt.healthComponent.combinedHealth : 0f);
+            Check("V1's shot landed on the Newt", Monsters.HitsApplied > hits0 && WasHit(newt, "revolver", "shotgun", "shotgunzone", "nail", "railcannon", "explosion", "punch"), metrics["newt_hit"] + "; hit by " + HitsOn(newt));
             Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
             yield return BackToTitle();
         }

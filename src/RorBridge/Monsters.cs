@@ -55,6 +55,20 @@ namespace V1Bridge.Ror
             return Physics.CheckSphere(feet + Vector3.up * 0.25f, 0.3f, LayerIndex.water.mask, QueryTriggerInteraction.Collide);
         }
 
+        static BodyIndex newt = BodyIndex.None;
+        static bool newtLooked;
+
+        /// <summary>The Bazaar's shopkeeper, who is on no monster team.</summary>
+        public static bool IsNewt(CharacterBody b)
+        {
+            if (!newtLooked)
+            {
+                newtLooked = true;
+                newt = BodyCatalog.FindBodyIndex("ShopkeeperBody");
+            }
+            return newt != BodyIndex.None && b.bodyIndex == newt;
+        }
+
         /// <summary>Every frame of a bridged run: where every monster is.</summary>
         public static void Tick(CharacterBody v1)
         {
@@ -68,7 +82,9 @@ namespace V1Bridge.Ror
             {
                 if (b == null || b == v1 || b.healthComponent == null || !b.healthComponent.alive || b.teamComponent == null) continue;
                 var t = b.teamComponent.teamIndex;
-                if (t == team || t == TeamIndex.None || t == TeamIndex.Neutral) continue;
+                if (t == team) continue;
+                // bystanders are left alone, all but the Newt: any survivor can pick a fight with him in the Bazaar
+                if ((t == TeamIndex.None || t == TeamIndex.Neutral) && !IsNewt(b)) continue;
                 float w, h;
                 var cap = b.GetComponent<CapsuleCollider>();
                 if (cap != null) { w = cap.radius * 2f; h = Mathf.Max(cap.height, w); }
