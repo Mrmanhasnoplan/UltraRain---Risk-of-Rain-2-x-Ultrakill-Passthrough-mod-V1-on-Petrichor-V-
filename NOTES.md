@@ -254,6 +254,12 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   trigger sphere on CollideWithCharacterHullOnly) need nothing of their own: they go through
   `TeleportHelper.TeleportBody`, which has moved V1 since the out-of-bounds work of 2026-10-10. The owner's report
   that V1 could not use them most likely predates that build; the `moonorbs` scenario now covers them.
+- The last HP (`V1HealthLink.OnTakeDamageServer`): hits on V1 are NonLethal on the RoR2 side, so RoR2 stops the body's
+  health at 1 and the rest of an overkilling hit was never measured. With the body's health under 100 (90 since
+  `V1Health`), ULTRAKILL's 1 HP is a body health of 0.9, shown as 1: at the floor already, every hit measured 0, no
+  `HURT` went out, and V1 could not die to RoR2 damage (with 110 health it still could, just: 1 HP was 1.1). Where the
+  body's health ends a hit at the floor, the hit now counts for `DamageReport.damageDealt` (RoR2's figure after
+  armor and one-shot protection) less what the barrier absorbed, if that is more than what was measured.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -295,6 +301,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-11 | lasthp (golemplains) | PASS (1 run, 19/19, 0 real files changed, 0 exceptions) | at 10 HP a 5.4-damage hit cost 6 (10 -> 4); at 1 HP (body health 1 of 90) an 18-damage hit went out as HURT 20, V1 died and the run ended 2 s later. Before the fix that last hit sent nothing (the owner's report: V1 could not fall below 1) |
 | 2026-10-11 | moonorbs (moon2, Commencement) | PASS (1 run, 21/21, 0 real files changed) with no code change | the escape objects switched on by hand as beating Mithrix does: 5 exit orbs; V1 put into one (9.2 m across) was taken 0.25 s later, stood 9.8 m from the orb's destination 670 m below, 2 mm above the ground, body with it, one teleport, HP 100 -> 100. Commencement itself: 1,491 colliders, 662,271 triangles, exported in 482 ms. Not run: the fight, the orbs as it really leaves them, the ship. The run logs 1 RoR2 exception from `ModelSkinController.ApplySkinAsync` (also seen once in an items run; not looked into) |
 | 2026-10-11 | items, with the body-effect checks (golemplains) | PASS (1 run, 26/26, 0 real files changed) | every non-lunar item: 0 buff or item visuals on V1 (33 refused), 10 things attached to the body (Focus Crystal's ring, the Unstable Tesla Coil's aura, Headstompers...) with 0 renderers on, 0 on under the body; the screenshot no longer has the bubbles round the view. Still there: ground zones, allies and drones with their own items |
 | 2026-10-11 | coinshot, ricoshot version (golemplains) | PASS (1 run of the final version, 25/25, 0 real files changed, 0 exceptions) | with a coin 6 m in front of V1 on the line: taken by the coin, no HURT, and the Beetle Guard that fired (the nearest monster) took `revolver` x4 to the head = 48, V1 100 -> 100, coin gone. The run before it failed: the shot was fired inside the coin's first 0.1 s, when ULTRAKILL's coin takes nothing; such coins are no longer listed. Not run: a thrown coin, several coins, a real monster's hitscan |

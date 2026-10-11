@@ -301,7 +301,7 @@ namespace V1Bridge.Ror
     public class V1HealthLink : MonoBehaviour, IOnIncomingDamageServerReceiver, IOnTakeDamageServerReceiver
     {
         HealthComponent hc;
-        float before, shieldBefore;
+        float before, shieldBefore, barrierBefore;
         DamageInfo incoming;
         public static int HurtsSent;
         public static float LastHurt;
@@ -315,6 +315,7 @@ namespace V1Bridge.Ror
             if (!Linked) return;
             before = hc.health;
             shieldBefore = hc.shield;
+            barrierBefore = hc.barrier;
             incoming = info;
             info.damageType |= DamageType.NonLethal;
         }
@@ -324,6 +325,11 @@ namespace V1Bridge.Ror
             if (!Linked) return;
             // health and shield are one pool to V1 (see Pool): what either lost is what the hit cost
             float lost = before + shieldBefore - hc.health - hc.shield;
+            // The hit could not kill here (NonLethal), so RoR2 stopped the body's health at 1 and what the hit had left
+            // over went unmeasured: a V1 whose share of the body's health is 1 or less (1 HP of ULTRAKILL's on a body of
+            // under 100) lost nothing at all, and could not die. Where the health was stopped, the hit counts for what
+            // RoR2 worked it out to be, less what the barrier took.
+            if (hc.health <= 1.001f && report != null) lost = Mathf.Max(lost, report.damageDealt - Mathf.Max(0f, barrierBefore - hc.barrier));
             if (lost <= 0f) return;
             hc.Networkhealth = before;
             hc.Networkshield = shieldBefore;

@@ -95,6 +95,7 @@ namespace V1Bridge.Ror
                 case "sharpshooter": body = Sharpshooter(); break;
                 case "coinshot": body = CoinsAgainstHitscan(); break;
                 case "moonorbs": body = MoonOrbs(); break;
+                case "lasthp": body = LastHp(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -2280,6 +2281,43 @@ namespace V1Bridge.Ror
             yield return SnapRor("ror2-after-orb");
             yield return BackToTitle();
         }
+        /// <summary>A V1 on its last HP dies to a Risk of Rain 2 hit: the hit counts in full even where RoR2, which may not
+        /// kill the body itself, stops the body's health at 1.</summary>
+        IEnumerator LastHp()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            yield return Whole();
+            // down to a few HP, by a hit bigger than what is left: it has to cost all of its worth
+            yield return WaitVulnerable();
+            UkLink.Send(Proto.Hurt + " 90");
+            yield return new WaitForSecondsRealtime(1.5f);
+            metrics["start"] = "ULTRAKILL HP " + V1Drive.UkHp + ", body " + F(v1.healthComponent.health) + " of " + F(v1.healthComponent.fullHealth);
+            if (!Check("V1 is down to 10 HP", V1Drive.UkHp == 10, metrics["start"])) yield break;
+            // 6 HP worth: leaves 4
+            yield return PlainHit(v1, v1.maxHealth * 0.06f, "hit_leaving_some");
+            Check("a hit smaller than what is left costs what it is worth", V1Drive.UkHp >= 3 && V1Drive.UkHp <= 5 && !V1Drive.UkDead, metrics["hit_leaving_some"]);
+            // down to exactly 1
+            yield return WaitVulnerable();
+            UkLink.Send(Proto.Hurt + " " + (V1Drive.UkHp - 1));
+            yield return new WaitForSecondsRealtime(1.5f);
+            Check("V1 is on its last HP", V1Drive.UkHp == 1 && !V1Drive.UkDead, "ULTRAKILL HP " + V1Drive.UkHp + ", body " + F(v1.healthComponent.health));
+            yield return WaitVulnerable();
+            int hurts0 = V1HealthLink.HurtsSent;
+            v1.healthComponent.TakeDamage(new DamageInfo { damage = v1.maxHealth * 0.2f, position = v1.corePosition });
+            float t = Now;
+            while ((!V1Drive.UkDead || Run.instance == null || !Run.instance.isGameOverServer) && Now - t < 8f) yield return null;
+            metrics["last_hit"] = "HURT " + (V1HealthLink.HurtsSent > hurts0 ? F(V1HealthLink.LastHurt) : "none") + ", ULTRAKILL HP " + V1Drive.UkHp + ", dead " + V1Drive.UkDead + ", run over " + (Run.instance != null && Run.instance.isGameOverServer) + " after " + F(Now - t) + " s";
+            Check("a hit on a V1 with 1 HP is sent on in full", V1HealthLink.HurtsSent > hurts0 && V1HealthLink.LastHurt > 15f, metrics["last_hit"]);
+            Check("and kills it: the run ends", V1Drive.UkDead && Run.instance != null && Run.instance.isGameOverServer, metrics["last_hit"]);
+            yield return new WaitForSecondsRealtime(3f);
+            yield return BackToTitle();
+        }
+
         static string Q(string s)
         {
             var sb = new StringBuilder("\"");
