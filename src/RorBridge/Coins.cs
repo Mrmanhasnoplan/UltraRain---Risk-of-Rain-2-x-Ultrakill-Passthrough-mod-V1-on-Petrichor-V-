@@ -11,6 +11,38 @@ namespace V1Bridge.Ror
     /// is taken by the coin, which then does ULTRAKILL's own thing with it. Risk of Rain 2's monsters shoot with
     /// BulletAttack: ULTRAKILL says where the coins hang (COINS), and a monster's bullet whose line runs into one before
     /// it reaches the stage or V1 stops there, and ULTRAKILL is told which coin it was (COINHIT).</summary>
+    /// <summary>Risk of Rain 2 hangs a visual on a body for many of its buffs and items (a bubble round it for a shield or
+    /// armor, a glow, a ring). On V1 they are seen from the inside, and by the other players on a body that is not
+    /// drawn as one: V1's body never gets them. The buffs and items themselves are untouched.</summary>
+    internal static class NoBodyEffects
+    {
+        public static string Problem;
+        public static int Patched, Refused;
+
+        public static void Apply(Harmony h)
+        {
+            try
+            {
+                foreach (var m in AccessTools.GetDeclaredMethods(typeof(CharacterBody)))
+                {
+                    if (m.Name != "UpdateSingleTemporaryVisualEffect") continue;
+                    h.Patch(m, prefix: new HarmonyMethod(typeof(NoBodyEffects), nameof(Before)));
+                    Patched++;
+                }
+                if (Patched == 0) Problem = "CharacterBody.UpdateSingleTemporaryVisualEffect not found";
+            }
+            catch (Exception e) { Problem = e.Message; }
+            if (Problem != null) Plugin.Log.LogError("no effects on V1's body: " + Problem);
+        }
+
+        static void Before(CharacterBody __instance, ref bool active)
+        {
+            if (!active || __instance.bodyIndex != V1Survivor.BodyIndex || V1Survivor.BodyIndex == BodyIndex.None) return;
+            active = false;
+            Refused++;
+        }
+    }
+
     internal static class Coins
     {
         struct Coin { public int id; public Vector3 at; }

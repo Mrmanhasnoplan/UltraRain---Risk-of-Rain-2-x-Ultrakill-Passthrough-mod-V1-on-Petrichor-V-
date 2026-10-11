@@ -243,6 +243,17 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   coin takes no shot, and the bullet would be swallowed for nothing. The two patches are applied by hand
   (`Coins.Apply`) so a rename cannot take `PatchAll` down.
   Only `BulletAttack` is covered: monsters whose "laser" is a blast or a projectile are not hitscan to RoR2. Protocol 11.
+- No effects on V1's body (`NoBodyEffects` in `Coins.cs`, `V1Drive.HideBodyParts`): a prefix on both
+  `CharacterBody.UpdateSingleTemporaryVisualEffect` overloads turns `active` off for V1's body index, so RoR2 never
+  hangs its buff and item visuals on it (shield and armor bubbles, glows, debuff marks), for every player who has the
+  mod, not only the one playing V1. The 0.1 s sweep now also switches off renderers under the body object itself and
+  under every `NetworkedBodyAttachment` on it (item auras, range rings, tethers), and their lights; that part is
+  local to the V1 player. Not touched: zones an item puts in the world (healing and buff wards, a Warbanner), and
+  anything on allies and drones.
+- Mithrix's exit orbs (`MoonExitArenaOrb`: `MapZone` KickOutPlayers/TriggerEnter with an explicit destination, a 9 m
+  trigger sphere on CollideWithCharacterHullOnly) need nothing of their own: they go through
+  `TeleportHelper.TeleportBody`, which has moved V1 since the out-of-bounds work of 2026-10-10. The owner's report
+  that V1 could not use them most likely predates that build; the `moonorbs` scenario now covers them.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -284,6 +295,8 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-11 | moonorbs (moon2, Commencement) | PASS (1 run, 21/21, 0 real files changed) with no code change | the escape objects switched on by hand as beating Mithrix does: 5 exit orbs; V1 put into one (9.2 m across) was taken 0.25 s later, stood 9.8 m from the orb's destination 670 m below, 2 mm above the ground, body with it, one teleport, HP 100 -> 100. Commencement itself: 1,491 colliders, 662,271 triangles, exported in 482 ms. Not run: the fight, the orbs as it really leaves them, the ship. The run logs 1 RoR2 exception from `ModelSkinController.ApplySkinAsync` (also seen once in an items run; not looked into) |
+| 2026-10-11 | items, with the body-effect checks (golemplains) | PASS (1 run, 26/26, 0 real files changed) | every non-lunar item: 0 buff or item visuals on V1 (33 refused), 10 things attached to the body (Focus Crystal's ring, the Unstable Tesla Coil's aura, Headstompers...) with 0 renderers on, 0 on under the body; the screenshot no longer has the bubbles round the view. Still there: ground zones, allies and drones with their own items |
 | 2026-10-11 | coinshot, ricoshot version (golemplains) | PASS (1 run of the final version, 25/25, 0 real files changed, 0 exceptions) | with a coin 6 m in front of V1 on the line: taken by the coin, no HURT, and the Beetle Guard that fired (the nearest monster) took `revolver` x4 to the head = 48, V1 100 -> 100, coin gone. The run before it failed: the shot was fired inside the coin's first 0.1 s, when ULTRAKILL's coin takes nothing; such coins are no longer listed. Not run: a thrown coin, several coins, a real monster's hitscan |
 | 2026-10-11 | coinshot (golemplains) | PASS (1 run, 23/23, 0 real files changed, 0 exceptions) | a monster's BulletAttack at V1's head from 20 m: with no coin, HURT 20 (100 -> 80); with a coin (TESTCOIN) 6 m in front of V1 on the line: taken by the coin (ULTRAKILL counts 1), no HURT, HP 100 -> 100; two seconds on the coin was gone and V1 still at 100: the coin's own shot at V1 did no damage this once, not looked into. Not run: a thrown coin, several coins, V1 shooting the flashing coin, a real monster's hitscan (Lesser Wisp, Clay Templar...) |
 | 2026-10-11 | sharpshooter (golemplains) | PASS (1 run, 21/21, 0 real files changed, 0 exceptions) | revolver turned to the Sharpshooter in 2 presses (`Alternative_Revolver_Twirl/revolver2alt`); alternate fire held 1.3 s, a fireball fired at V1 from 26 m along the aim line, shot released 0.12 s later: 1 blown up on the first shot (ULTRAKILL counts 1), V1 100 -> 100 HP with no hit, the Beetle Guard behind it lost 30. Parry re-run afterwards: 2 runs failed with the Knuckleblaster out (it does not parry; punches came through as x2.5), a third with `TESTARM 0` parried a melee hit and caught the fireball (its one failed check: the Beetle Guard's own swing took the parry before the test's scripted hit arrived) |

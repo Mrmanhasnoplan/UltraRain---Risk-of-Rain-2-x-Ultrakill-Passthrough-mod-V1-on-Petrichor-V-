@@ -60,7 +60,10 @@ that a copy kept in `profiles\ror2\cache` shows at once.
   Kills are Risk of Rain 2's: gold, experience, on-kill items.
 - Health: ULTRAKILL's HP is the truth and RoR2's health follows it. RoR2 works out a hit (armor, shield, barrier) and
   ULTRAKILL takes what got through, unless V1 is invincible (a dash, the moment after a hit). RoR2 healing heals V1.
-- Parry: punch a monster as its melee hit lands, or punch a projectile as it arrives.
+- Parry: punch a monster as its melee hit lands, or punch a projectile as it arrives. The Sharpshooter's ricochet shot
+  blows up projectiles it passes through, and a coin in the way of a monster's hitscan shot sends it into the nearest monster.
+- Shields (Personal Shield Generator, Transcendence) are part of V1's 100 HP: hits take the shield first, blood heals
+  health only, and the shield comes back the Risk of Rain 2 way, out of combat. V1 has no regeneration of its own.
 - The Sandbox's spawner arm is no longer in the 6th weapon slot: that slot is empty.
 
 ### Your saves
@@ -96,7 +99,8 @@ ULTRAKILL's own options (field of view, sensitivity, HUD, graphics) are in `prof
 
 `tools\Run-Test.ps1 -Scenario <name>` starts both games unattended, runs scripted checks, saves screenshots and
 `results.json` to `test-output\`, closes both games, and verifies that none of the real save files changed.
-Scenarios: `handshake`, `survivor`, `picture`, `geometry`, `combat`, `parry`, `runloop`
+Scenarios: `handshake`, `survivor`, `picture`, `geometry`, `combat`, `parry`, `runloop` and more (the list is in
+`src\RorBridge\TestMode.cs`)
 (add `-ExtraArgs '--v1bridge-stage','golemplains'` to choose the stage). Design: [docs/DESIGN.md](docs/DESIGN.md).
 
 Written with Claude (Anthropic) through Claude Code, directed and play-tested by a person.

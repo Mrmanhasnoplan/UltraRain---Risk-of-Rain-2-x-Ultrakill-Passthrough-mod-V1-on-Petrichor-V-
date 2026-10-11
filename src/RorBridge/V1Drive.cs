@@ -188,6 +188,27 @@ namespace V1Bridge.Ror
             if (hiddenModel == null || Time.time < nextPartSweep) return;
             nextPartSweep = Time.time + 0.1f;
             hiddenModel.GetComponentsInChildren(false, partScratch);
+            SwitchOff();
+            if (body == null) return;
+            // and what hangs on the body itself, or is attached to it over the network (an item's aura, its tethers,
+            // its range ring): effects of V1's own items, seen from inside them
+            body.GetComponentsInChildren(false, partScratch);
+            SwitchOff();
+            attachScratch.Clear();
+            NetworkedBodyAttachment.FindBodyAttachments(body, attachScratch);
+            foreach (var a in attachScratch)
+            {
+                if (a == null) continue;
+                a.GetComponentsInChildren(false, partScratch);
+                SwitchOff();
+                foreach (var l in a.GetComponentsInChildren<Light>()) if (l.enabled) l.enabled = false;
+            }
+        }
+
+        static readonly List<NetworkedBodyAttachment> attachScratch = new List<NetworkedBodyAttachment>();
+
+        static void SwitchOff()
+        {
             foreach (var r in partScratch)
             {
                 if (!r.enabled) continue;

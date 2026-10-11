@@ -52,6 +52,7 @@ namespace V1Bridge.Ror
             SaveGuard.Apply(harmony);
             harmony.PatchAll(typeof(Plugin).Assembly);
             Coins.Apply(harmony);
+            NoBodyEffects.Apply(harmony);
             // what the game asks of mods: keeps modded players out of vanilla matchmaking
             RoR2.RoR2Application.isModded = true;
 

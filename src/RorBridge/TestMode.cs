@@ -94,6 +94,7 @@ namespace V1Bridge.Ror
                 case "maxhealth": body = MaxHealthItems(); break;
                 case "sharpshooter": body = Sharpshooter(); break;
                 case "coinshot": body = CoinsAgainstHitscan(); break;
+                case "moonorbs": body = MoonOrbs(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -1707,6 +1708,24 @@ namespace V1Bridge.Ror
             metrics["all_items_followers_alive"] = followers.ToString();
             metrics["all_items_switched_off_by_bridge"] = V1Drive.HiddenPartNames();
             Check("with every item: nothing on the body is drawn", drawn() == 0 && followers == 0, drawn() + " renderers on, " + followers + " followers floating, " + model.GetComponentsInChildren<ItemDisplay>().Length + " displays");
+            // and nothing round it: the bubbles and glows Risk of Rain 2 hangs on a body, and what items attach to it
+            int bubbles = 0, attachedOn = 0, attachments = 0;
+            foreach (var fx in FindObjectsOfType<TemporaryVisualEffect>()) if (fx.healthComponent == v1.healthComponent) bubbles++;
+            var attached = new List<NetworkedBodyAttachment>();
+            NetworkedBodyAttachment.FindBodyAttachments(v1, attached);
+            var attachedNames = new List<string>();
+            foreach (var a in attached)
+            {
+                if (a == null) continue;
+                attachments++;
+                attachedNames.Add(a.name.Replace("(Clone)", ""));
+                foreach (var r in a.GetComponentsInChildren<Renderer>()) if (r.enabled) attachedOn++;
+            }
+            int onBody = 0;
+            foreach (var r in v1.GetComponentsInChildren<Renderer>()) if (r.enabled) onBody++;
+            metrics["effects_round_the_body"] = bubbles + " buff and item visuals on V1 (" + NoBodyEffects.Refused + " refused so far), " + attachments + " things attached (" + string.Join(", ", attachedNames.ToArray()) + ") with " + attachedOn + " renderers on, " + onBody + " renderers on under the body itself";
+            Check("the patch that keeps buff and item visuals off V1 is on", NoBodyEffects.Problem == null && NoBodyEffects.Patched > 0, NoBodyEffects.Problem ?? NoBodyEffects.Patched + " methods");
+            Check("with every item: no bubble, glow or attached effect is drawn round V1", bubbles == 0 && attachedOn == 0 && onBody == 0 && NoBodyEffects.Refused > 0, metrics["effects_round_the_body"]);
             yield return SnapRor("ror2-all-items-down");
             Vector3 ahead = V1Drive.ToRor(V1Drive.Latest.eye) + Quaternion.Euler(0f, V1Drive.Latest.yaw, 0f) * Vector3.forward * 10f;
             yield return AimAt(() => ahead);
@@ -2210,6 +2229,57 @@ namespace V1Bridge.Ror
             yield return BackToTitle();
         }
 
+        /// <summary>The orbs that appear round Mithrix's arena when he is beaten take V1 where they take any survivor: down
+        /// to the way back to the ship (run with --v1bridge-stage moon2).</summary>
+        IEnumerator MoonOrbs()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            // the escape's own objects, switched on as beating Mithrix switches them on
+            Transform holder = null;
+            foreach (var tr in Resources.FindObjectsOfTypeAll<Transform>())
+            {
+                if (tr.gameObject.scene.name != null && tr.name == "EscapeSequenceObjects") holder = tr;
+            }
+            if (!Check("Commencement has its escape objects", holder != null)) yield break;
+            holder.gameObject.SetActive(true);
+            yield return new WaitForSecondsRealtime(3f);
+            MapZone orb = null;
+            int orbs = 0;
+            foreach (var z in holder.GetComponentsInChildren<MapZone>())
+            {
+                orbs++;
+                if (orb == null && z.explicitDestination != null && z.isActiveAndEnabled) orb = z;
+            }
+            metrics["orbs"] = orbs + " exit orbs";
+            if (!Check("there is an exit orb with somewhere to go", orb != null, metrics["orbs"])) yield break;
+            var col = orb.GetComponent<Collider>();
+            Vector3 dest = orb.explicitDestination.position;
+            metrics["orb"] = orb.name + " at " + orb.transform.position + ", " + (col != null ? col.GetType().Name + " " + F(col.bounds.size.x) + " m across, enabled " + col.enabled : "no collider") + ", layer " + LayerMask.LayerToName(orb.gameObject.layer) + ", takes players to " + dest;
+            int teleports0 = V1Drive.RorTeleports, hp0 = V1Drive.UkHp;
+            float t = Now;
+            // into it, again and again as it circles the arena, the way a player jumps at it
+            while (V1Drive.RorTeleports == teleports0 && Now - t < 12f)
+            {
+                V1Drive.Teleport(orb.transform.position - Vector3.up * 1f, 0f);
+                yield return new WaitForSecondsRealtime(0.25f);
+            }
+            metrics["orb_seconds"] = F(Now - t);
+            if (!Check("the orb took V1", V1Drive.RorTeleports > teleports0, metrics["orb"])) yield break;
+            yield return new WaitForSecondsRealtime(3f);
+            Vector3 now = V1Drive.ToRor(V1Drive.Latest.feet);
+            bool ground = Physics.Raycast(now + Vector3.up * 2f, Vector3.down, out var hit, 60f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore);
+            metrics["arrived"] = "V1 at " + now + ", " + F(Vector3.Distance(now, dest)) + " m from where the orb sends players, " + (ground ? F(now.y - hit.point.y) + " m above the ground" : "no ground below") + ", body " + F(Vector3.Distance(v1.footPosition, now)) + " m from V1, " + (V1Drive.RorTeleports - teleports0) + " teleports";
+            Check("V1 is where the orb sends players", Vector3.Distance(now, dest) < 25f, metrics["arrived"]);
+            Check("standing on the ground there, body and all", V1Drive.Latest.grounded && ground && Vector3.Distance(v1.footPosition, now) < 0.5f, metrics["arrived"]);
+            Check("unhurt, the run going on", V1Drive.UkHp >= hp0 - 1 && Run.instance != null && !Run.instance.isGameOverServer && v1.healthComponent.alive, "ULTRAKILL HP " + hp0 + " -> " + V1Drive.UkHp);
+            yield return SnapRor("ror2-after-orb");
+            yield return BackToTitle();
+        }
         static string Q(string s)
         {
             var sb = new StringBuilder("\"");
