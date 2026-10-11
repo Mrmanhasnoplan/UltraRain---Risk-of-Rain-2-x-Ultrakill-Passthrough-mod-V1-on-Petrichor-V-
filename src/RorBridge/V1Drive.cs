@@ -220,8 +220,8 @@ namespace V1Bridge.Ror
             Parry.Reset();
             Stage = StageGeometry.Export(Origin, K, ++geoSerial % 2);
             StageLoaded = null;
-            Plugin.Log.LogInfo("stage exported: " + Stage.objects + " colliders, " + Stage.triangles + " triangles (" + Stage.unreadable + " meshes read from the GPU, " + Stage.skipped
-                               + " skipped) in " + Stage.ms.ToString("0") + " ms" + (Stage.problem != null ? ", problem: " + Stage.problem : ""));
+            Plugin.Log.LogInfo("stage exported: " + Stage.objects + " colliders, " + Stage.triangles + " triangles (" + Stage.unreadable + " meshes read from the GPU, " + Stage.readBack + " of them straight from Direct3D, " + Stage.skipped
+                               + " skipped) in " + Stage.ms.ToString("0") + " ms" + (Stage.skippedNames != null ? ", skipped: " + Stage.skippedNames : "") + (Stage.problem != null ? ", problem: " + Stage.problem : ""));
             pendingTp = "0 0 0 " + S(yaw) + " 0";
             UkLink.Send(Proto.Geo + " " + Stage.path);
 

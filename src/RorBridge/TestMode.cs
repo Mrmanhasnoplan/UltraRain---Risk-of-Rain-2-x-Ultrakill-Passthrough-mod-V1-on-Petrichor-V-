@@ -523,8 +523,8 @@ namespace V1Bridge.Ror
             var st = V1Drive.Stage;
             metrics["stage_colliders"] = st.objects.ToString();
             metrics["stage_triangles"] = st.triangles.ToString();
-            metrics["stage_meshes_read_from_gpu"] = st.unreadable.ToString();
-            metrics["stage_skipped"] = st.skipped.ToString();
+            metrics["stage_meshes_read_from_gpu"] = st.unreadable + " (" + st.readBack + " straight from Direct3D)";
+            metrics["stage_skipped"] = st.skipped + (st.skippedNames != null ? ": " + st.skippedNames : "") + (st.problem != null ? "; " + st.problem : "");
             metrics["stage_export_ms"] = F(st.ms);
             metrics["stage_bounds"] = st.bounds.min + " .. " + st.bounds.max;
             metrics["stage_loaded"] = V1Drive.StageLoaded ?? "no reply";

@@ -179,6 +179,14 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   nor the body's own footstep dust and jet flames. `V1Drive.HideBodyParts` switches off every enabled renderer under the
   model every 0.1 s and puts them back on disengage. Effects that are not under the model (wards, bubbles and auras
   round the body, followers, drones) are RoR2's world and stay.
+- Unreadable collision meshes (Siphoned Forest is the first stage met that has them: 25 of its meshes, the terrain
+  among them): `GraphicsBuffer.GetData` on a mesh's vertex buffer returns all zeros on this Direct3D 11 set-up,
+  `AsyncGPUReadback.Request(GraphicsBuffer)` reports an error, and setting `vertexBufferTarget` to Raw only swaps in
+  an empty buffer. `D3D11Read` (in `StageGeometry.cs`) reads the native buffer instead: `GetNativeVertexBufferPtr` /
+  `GetNativeIndexBufferPtr` → `GetDevice` → a staging buffer → `CopyResource` → `Map`, through the COM function tables,
+  with the device's context guarded (`ID3D10Multithread.SetMultithreadProtected`, once, then 60 ms for the render
+  thread to clear) and every copy inside `Enter`/`Leave`. Every GPU read is checked against `mesh.bounds`; a mesh
+  that does not fit is skipped and named in the log (`skipped:` / `problem:`), so a stage with no floor says why.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -220,6 +228,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-11 | geometry (snowyforest, Siphoned Forest) | before: FAIL, 4 of 81 ground points, V1 fell through (all 23 GPU-read meshes came back as zeros). After: PASS 1 of 2 runs (30/30; 0 real files changed); the other run had the ground right too (81/81) and failed only the after-walk checks, V1 having spawned on a cliff top and walked off it | 353 colliders, 326,845 triangles, 25 meshes straight from Direct3D; export 489 ms, build in ULTRAKILL 412 ms; ground equal within 6 mm at 81/81 points; V1 walked 35 m, feet 5 mm above RoR2's ground. Spawn point differs per run |
 | 2026-10-11 | items (golemplains) | PASS (1 run of the final version, 24/24, 0 real files changed) | 8 common items: 9 displays, RoR2 hid all of them itself. Every non-lunar item (191 given, 165 displays): 0 renderers left on, 0 followers; the bridge switched off 17 that RoR2 had left on (Plasma Shrimp's mesh, Tooth necklace decal, H3AD-5T, Chronic Expansion, Elusive Antlers particles, footstep dust, jet flames...). The run logs 1 RoR2 exception from its item-notification queue, caused by the test handing out 191 items in one frame. Screenshots with every item are too full of wards, bubbles and allies to judge by eye |
 | 2026-10-11 | ping (golemplains) | PASS (1 run, 22/22, 0 real files changed, 0 exceptions) | key held 0.5 s = 1 ping; Beetle Guard 8 m ahead pinged as target; ground 6 m ahead pinged 0 m from the aim point; held back from ULTRAKILL on this profile: T, Q, middle mouse. Scripted input: the real middle-mouse press was not exercised |
 | 2026-10-10 | audio (golemplains) | PASS (1 run) | volumes all 0.52 / sfx 0.17 / music 0 (the real settings); SFX mixer at -15.4 dB, one listener, 3 sources playing idle and 4 while firing. Audibility itself cannot be checked by the test |
@@ -252,7 +261,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 - Stage geometry is a snapshot taken when the run engages: moving platforms, doors and anything spawned later are not mirrored yet.
 - RoR2's character-only invisible walls (CollideWithCharacterHullOnly layer) are not mirrored: V1 can walk past map edges RoR2 survivors cannot.
-- Only golemplains has been tested; stages with unreadable collision meshes will exercise the GPU read-back path for the first time.
+- Unreadable collision meshes are read straight from Direct3D 11 (see Decisions); tested on Siphoned Forest only. Other DLC stages, another graphics card or driver, and a non-D3D11 renderer are untested (the last cannot work: those meshes are skipped and named in the log). The golemplains geometry run was not repeated after this change (its meshes are readable and take the old path).
 - Parry windows (0.2 s melee, 0.12 s projectile, 5 units returned) are first guesses, untested by a human. Melee damage on V1 is delayed by the 0.2 s window.
 - The scripted fireball catch in the `parry` scenario fails about half the time (timing); the parried projectile is removed and its owner damaged, it is not flung back as an ULTRAKILL projectile.
 - The `combat` scenario is not deterministic: the scripted punch sometimes misses a Lemurian spawned 1.5 m away, and the
