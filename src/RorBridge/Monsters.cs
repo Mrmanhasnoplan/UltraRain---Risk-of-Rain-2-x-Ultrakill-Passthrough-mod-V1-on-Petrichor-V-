@@ -301,7 +301,7 @@ namespace V1Bridge.Ror
     public class V1HealthLink : MonoBehaviour, IOnIncomingDamageServerReceiver, IOnTakeDamageServerReceiver
     {
         HealthComponent hc;
-        float before;
+        float before, shieldBefore;
         DamageInfo incoming;
         public static int HurtsSent;
         public static float LastHurt;
@@ -314,6 +314,7 @@ namespace V1Bridge.Ror
         {
             if (!Linked) return;
             before = hc.health;
+            shieldBefore = hc.shield;
             incoming = info;
             info.damageType |= DamageType.NonLethal;
         }
@@ -321,14 +322,22 @@ namespace V1Bridge.Ror
         public void OnTakeDamageServer(DamageReport report)
         {
             if (!Linked) return;
-            float lost = before - hc.health;
+            // health and shield are one pool to V1 (see Pool): what either lost is what the hit cost
+            float lost = before + shieldBefore - hc.health - hc.shield;
             if (lost <= 0f) return;
             hc.Networkhealth = before;
-            LastHurt = lost / hc.fullHealth * 100f * Plugin.IncomingDamage.Value;
+            hc.Networkshield = shieldBefore;
+            LastHurt = lost / Pool(hc) * 100f * Plugin.IncomingDamage.Value;
             // a monster's swing waits a moment for V1's fist; everything else lands at once
             if (incoming != null && Parry.Hold(incoming, hc.body, LastHurt)) return;
             Send(LastHurt);
         }
+
+        /// <summary>What ULTRAKILL's 100 HP stands for on the body: its health and its shield together. A shield of
+        /// RoR2's own would soak hits up out of ULTRAKILL's sight (nothing of it shows in ULTRAKILL's HUD) and fill
+        /// itself again; with Transcendence, which turns all health into shield, V1 would take nothing at all until the
+        /// one hit that killed it. So a shield is more health to V1: every hit costs its share of the two.</summary>
+        public static float Pool(HealthComponent hc) => Mathf.Max(1f, hc.fullHealth + hc.fullShield);
 
         public static void Send(float share)
         {
@@ -348,9 +357,26 @@ namespace V1Bridge.Ror
         static void Postfix(HealthComponent __instance, float __result)
         {
             if (__result <= 0f || Muted || !V1Drive.Linked(__instance)) return;
-            float x = __result / __instance.fullHealth * 100f;
+            float x = __result / V1HealthLink.Pool(__instance) * 100f;
             Sent += x;
             UkLink.Send(Proto.Heal + " " + x.ToString("0.###", CultureInfo.InvariantCulture));
+        }
+    }
+
+    /// <summary>Risk of Rain 2 tops a body up by whatever its maximum health grew (a level, an item, a curse lifted). For
+    /// V1 the body's health is only a picture of ULTRAKILL's HP: a bigger maximum is not healing, and is not forwarded.</summary>
+    [HarmonyPatch(typeof(CharacterBody), nameof(CharacterBody.RecalculateStats))]
+    static class GrowthIsNotHealing
+    {
+        static void Prefix(CharacterBody __instance, out bool __state)
+        {
+            __state = HealsReachV1.Muted;
+            if (V1Drive.Linked(__instance.healthComponent)) HealsReachV1.Muted = true;
+        }
+
+        static void Finalizer(bool __state)
+        {
+            HealsReachV1.Muted = __state;
         }
     }
 }

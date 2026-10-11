@@ -91,6 +91,7 @@ namespace V1Bridge.Ror
                 case "newt": body = NewtTest(); break;
                 case "worm": body = WormTest(); break;
                 case "health": body = HealthTest(); break;
+                case "maxhealth": body = MaxHealthItems(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -1939,6 +1940,88 @@ namespace V1Bridge.Ror
             Check("changing the setting changes the body's health at once", Mathf.Abs(changed - 200f) < 0.5f && Mathf.Abs(v1.maxHealth - configured) < 0.5f, metrics["setting_changed"]);
             Check("and leaves V1's ULTRAKILL HP alone", hpAfter == hp0 && V1Drive.UkHp == hp0, metrics["setting_changed"]);
             Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
+            yield return BackToTitle();
+        }
+
+        /// <summary>One plain Risk of Rain 2 hit on V1 from nobody, and what it cost on both sides.</summary>
+        IEnumerator PlainHit(CharacterBody v1, float damage, string key)
+        {
+            yield return WaitVulnerable();
+            var hc = v1.healthComponent;
+            int hp0 = V1Drive.UkHp, hurts0 = V1HealthLink.HurtsSent;
+            float shield0 = hc.shield, max0 = hc.fullHealth;
+            hc.TakeDamage(new DamageInfo { damage = damage, position = v1.corePosition });
+            float sent = V1HealthLink.HurtsSent > hurts0 ? V1HealthLink.LastHurt : 0f;
+            yield return new WaitForSecondsRealtime(1.2f);
+            lastCost = hp0 - V1Drive.UkHp;
+            metrics[key] = F(damage) + " damage on " + F(max0) + " health + " + F(shield0) + " shield: HURT " + F(sent) + ", ULTRAKILL HP " + hp0 + " -> " + V1Drive.UkHp + (V1Drive.UkDead ? " DEAD" : "") + ", shield -> " + F(hc.shield) + ", body health " + F(hc.health);
+        }
+        int lastCost;
+
+        IEnumerator Whole()
+        {
+            UkLink.Send(Proto.Respawn);
+            yield return new WaitForSecondsRealtime(1.5f);
+        }
+
+        /// <summary>What lowers or reshapes V1's Risk of Rain 2 health: Shaped Glass (half the health) and Transcendence
+        /// (all of it turned into shield).</summary>
+        IEnumerator MaxHealthItems()
+        {
+            V1Drive.Script = () => default;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            var hc = v1.healthComponent;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            float dmg = v1.maxHealth * 0.2f;
+
+            // 1. as V1 comes
+            yield return PlainHit(v1, dmg, "plain_hit");
+            int plain = lastCost;
+            Check("a hit of a fifth of V1's health costs about 20 HP", Mathf.Abs(plain - 20) <= 2, metrics["plain_hit"]);
+
+            // 2. Shaped Glass
+            int hp0 = V1Drive.UkHp;
+            v1.inventory.GiveItem(RoR2Content.Items.LunarDagger, 1);
+            yield return new WaitForSecondsRealtime(1.5f);
+            metrics["glass_pickup"] = "max health " + F(hc.fullHealth) + ", ULTRAKILL HP " + hp0 + " -> " + V1Drive.UkHp;
+            Check("Shaped Glass halves the body's health and leaves V1's HP where it was", Mathf.Abs(hc.fullHealth - dmg * 2.5f) < 1f && V1Drive.UkHp == hp0, metrics["glass_pickup"]);
+            yield return Whole();
+            yield return PlainHit(v1, dmg, "glass_hit");
+            Check("the same hit now costs V1 twice as much", Mathf.Abs(lastCost - 40) <= 3, metrics["glass_hit"]);
+            hp0 = V1Drive.UkHp;
+            v1.inventory.RemoveItem(RoR2Content.Items.LunarDagger.itemIndex, 1);
+            yield return new WaitForSecondsRealtime(1.5f);
+            metrics["glass_removed"] = "max health " + F(hc.fullHealth) + ", ULTRAKILL HP " + hp0 + " -> " + V1Drive.UkHp;
+            Check("losing Shaped Glass does not heal V1", V1Drive.UkHp == hp0, metrics["glass_removed"]);
+
+            // 2b. levels: more health on the body, none for V1
+            float max0 = hc.fullHealth, level0 = v1.level;
+            TeamManager.instance.GiveTeamExperience(TeamIndex.Player, 2000);
+            yield return new WaitForSecondsRealtime(2f);
+            metrics["levels"] = "level " + F(level0) + " -> " + F(v1.level) + ", max health " + F(max0) + " -> " + F(hc.fullHealth) + ", ULTRAKILL HP " + hp0 + " -> " + V1Drive.UkHp;
+            Check("levelling up raises the body's health and does not heal V1", v1.level > level0 && hc.fullHealth > max0 + 1f && V1Drive.UkHp == hp0, metrics["levels"]);
+            dmg = hc.fullHealth * 0.2f;
+
+            // 3. Transcendence
+            yield return Whole();
+            hp0 = V1Drive.UkHp;
+            v1.inventory.GiveItem(RoR2Content.Items.ShieldOnly, 1);
+            yield return new WaitForSecondsRealtime(1.5f);
+            metrics["transcendence_pickup"] = "health " + F(hc.fullHealth) + ", shield " + F(hc.fullShield) + " (now " + F(hc.shield) + "), ULTRAKILL HP " + hp0 + " -> " + V1Drive.UkHp;
+            Check("Transcendence leaves V1's HP where it was", V1Drive.UkHp == hp0, metrics["transcendence_pickup"]);
+            float pool = hc.fullHealth + hc.fullShield;
+            yield return PlainHit(v1, dmg, "transcendence_hit");
+            int first = lastCost;
+            Check("a hit on a transcendent V1 costs its share of health and shield together", Mathf.Abs(first - dmg / pool * 100f) <= 3f, metrics["transcendence_hit"] + "; a share of the whole would be " + F(dmg / pool * 100f));
+            // one that goes through what Risk of Rain 2 calls the shield
+            yield return Whole();
+            float big = pool * 0.8f;
+            yield return PlainHit(v1, big, "transcendence_big_hit");
+            Check("a hit of four fifths of the whole costs about 80 HP and does not kill", !V1Drive.UkDead && Mathf.Abs(lastCost - 80) <= 4, metrics["transcendence_big_hit"]);
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && hc.alive);
             yield return BackToTitle();
         }
 

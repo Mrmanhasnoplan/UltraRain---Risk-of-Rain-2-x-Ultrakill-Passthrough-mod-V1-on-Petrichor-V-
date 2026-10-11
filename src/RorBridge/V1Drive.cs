@@ -472,7 +472,12 @@ namespace V1Bridge.Ror
                         finally { Dying = false; }
                     }
                 }
-                else hc.Networkhealth = Mathf.Max(1f, Mathf.Clamp01(UkHp / 100f) * hc.fullHealth);
+                else
+                {
+                    hc.Networkhealth = Mathf.Max(1f, Mathf.Clamp01(UkHp / 100f) * hc.fullHealth);
+                    // and of its shield, where it has one: the two are one pool to V1 (V1HealthLink.Pool)
+                    if (hc.fullShield > 0f || hc.shield > 0f) hc.Networkshield = Mathf.Clamp01(UkHp / 100f) * hc.fullShield;
+                }
             }
             if (body.inputBank != null) body.inputBank.aimDirection = Quaternion.Euler(Latest.pitch, Latest.yaw, 0f) * Vector3.forward;
         }
