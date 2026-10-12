@@ -273,6 +273,17 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   2026-10-12: a jointed machine of 40-odd primitives with blue wing blades and a lit eye. It also stood with its back
   to the camera (its `Model` child was turned 180 degrees; the display's front is +z, as for the real model): fixed.
   Checked with the `model` scenario and the cache set aside (`ror2-lobby-before.png`).
+- What the other players see (`V1Figure.cs`, 2026-10-12; the owner's choice: the mod's own figure for everyone, whether
+  or not they own ULTRAKILL, and nothing of ULTRAKILL's sent to anyone: not the model, not its skeleton or animations).
+  `V1Figure` sits on the body prefab's model: it builds the primitive figure (`V1Survivor.BuildFigure`, shared with the
+  character-select placeholder) as a child, 1.9 m tall, shown while the body is alive and is not a local player's own.
+  The Commando's meshes are kept off by a postfix on `CharacterModel.UpdateMaterials` (RoR2 sets each base renderer's
+  `enabled` there, also after a skin is applied), patched by hand, for models carrying a `V1Figure`. So that the
+  figure turns, `V1Drive.LateTick` writes V1's yaw to `CharacterDirection.yaw`: `CharacterNetworkTransform`'s snapshot
+  sends that (not the transform's rotation) as the body's facing. The figure's limbs do not move. Item displays are
+  untouched: they still hang on the hidden Commando skeleton, so friends may see items floating about the figure.
+  `Install.ps1` no longer needs ULTRAKILL when `prebuilt\` is there: it sets up Risk of Rain 2's side only, for
+  joining a V1 host. With no .decomp on this PC, RoR2's code was read as IL with the Mono.Cecil in the profile.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -314,6 +325,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-12 | figure (golemplains) | PASS (1 run of the final version, 32/32, 0 real files changed, 0 exceptions); items re-run afterwards: PASS 26/26 | a V1 body that is nobody's, looked at as Commando: 36 parts drawn, feet 1 cm above the body's, facing as the body was turned, 0 of the Commando's 3 renderers on. As V1: own figure not shown, 0 renderers on under the model, the body's facing equal to V1's view after a turn. One game only: NOT run with a second player, so that the figure and its facing arrive on a friend's screen is untested; so is the install on a PC without ULTRAKILL |
 | 2026-10-12 | second PC (Windows 11, Intel Arc 130V, RoR2BepInExPack 1.46.0, R2API ContentManagement 1.1.0), built with the SDK ZIP: handshake, picture (golemplains), geometry (snowyforest) | PASS: handshake 16/16, picture 32/32, geometry 29/29, 0 real files changed, 0 exceptions. The first handshake run reported 1 real file changed: the RoR2 profile, replaced by Steam Cloud at launch with a newer one from the other PC (its timestamp was two days before the run; a re-run changed nothing) | picture: 1280x720, 55 fps shown, frame age 28 ms avg / 44 ms p95, input to frame 41 ms, merge 8.4 ms. Siphoned Forest: 355 colliders, 327,073 triangles, 25 meshes straight from Direct3D (first run of D3D11Read on a second graphics card), 1 skipped (SF_FirepitRing), ground 81/81. Not run here: every other scenario. The install from `prebuilt\` was run only on this PC, where the profiles already existed |
 | 2026-10-11 | lasthp (golemplains) | PASS (1 run, 19/19, 0 real files changed, 0 exceptions) | at 10 HP a 5.4-damage hit cost 6 (10 -> 4); at 1 HP (body health 1 of 90) an 18-damage hit went out as HURT 20, V1 died and the run ended 2 s later. Before the fix that last hit sent nothing (the owner's report: V1 could not fall below 1) |
 | 2026-10-11 | moonorbs (moon2, Commencement) | PASS (1 run, 21/21, 0 real files changed) with no code change | the escape objects switched on by hand as beating Mithrix does: 5 exit orbs; V1 put into one (9.2 m across) was taken 0.25 s later, stood 9.8 m from the orb's destination 670 m below, 2 mm above the ground, body with it, one teleport, HP 100 -> 100. Commencement itself: 1,491 colliders, 662,271 triangles, exported in 482 ms. Not run: the fight, the orbs as it really leaves them, the ship. The run logs 1 RoR2 exception from `ModelSkinController.ApplySkinAsync` (also seen once in an items run; not looked into) |

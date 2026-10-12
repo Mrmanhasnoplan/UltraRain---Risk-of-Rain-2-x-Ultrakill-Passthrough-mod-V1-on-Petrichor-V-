@@ -8,9 +8,14 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Common.ps1')
 
 $steam = Get-SteamInfo
-if (-not $steam.UkDir) { throw 'ULTRAKILL is not installed in any Steam library' }
 if (-not $steam.RorDir) { throw 'Risk of Rain 2 is not installed in any Steam library' }
-"ULTRAKILL:      $($steam.UkDir)"
+$prebuilt = Join-Path (Split-Path $PSScriptRoot -Parent) 'prebuilt'
+$ready = (Test-Path (Join-Path $prebuilt 'RorBridge.dll')) -and (Test-Path (Join-Path $prebuilt 'UkBridge.dll'))
+# Without ULTRAKILL the mod still installs, for joining a friend who plays V1 (the mod has to be on both sides): you
+# play an ordinary survivor and see their V1. Playing V1 yourself needs ULTRAKILL.
+$joinOnly = -not $steam.UkDir
+if ($joinOnly -and ($Build -or -not $ready)) { throw 'ULTRAKILL is not installed in any Steam library, and without it the plugins cannot be built here: use a download of the mod that has the prebuilt folder' }
+"ULTRAKILL:      $(if ($joinOnly) { 'not installed: setting up for joining a friend''s V1 game only' } else { $steam.UkDir })"
 "Risk of Rain 2: $($steam.RorDir)"
 if (Get-Process 'Risk of Rain 2', 'ULTRAKILL' -ErrorAction SilentlyContinue) { throw 'close Risk of Rain 2 and ULTRAKILL first' }
 
@@ -23,10 +28,8 @@ if (-not (Test-Path $rorProxy)) {
 }
 
 & (Join-Path $PSScriptRoot 'Setup-Profiles.ps1') -Root $Root
-& (Join-Path $PSScriptRoot 'Install-UkDoorstop.ps1') -Root $Root
+if (-not $joinOnly) { & (Join-Path $PSScriptRoot 'Install-UkDoorstop.ps1') -Root $Root }
 
-$prebuilt = Join-Path (Split-Path $PSScriptRoot -Parent) 'prebuilt'
-$ready = (Test-Path (Join-Path $prebuilt 'RorBridge.dll')) -and (Test-Path (Join-Path $prebuilt 'UkBridge.dll'))
 if ($ready -and -not $Build) {
     foreach ($p in @(@('RorBridge', 'ror2'), @('UkBridge', 'uk'))) {
         $to = Join-Path $Root "profiles\$($p[1])\BepInEx\plugins\$($p[0])"
@@ -44,4 +47,5 @@ else {
     'Plugins: built on this PC'
 }
 ''
-'Done. To play:  Play.cmd  (then pick V1 in character select)'
+if ($joinOnly) { 'Done. To play:  Play.cmd  (then join your friend''s game as any survivor but V1)' }
+else { 'Done. To play:  Play.cmd  (then pick V1 in character select)' }

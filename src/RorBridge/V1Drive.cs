@@ -480,6 +480,8 @@ namespace V1Bridge.Ror
             // the body's transform sits at its capsule's middle
             t.position = feet + (t.position - body.footPosition);
             t.rotation = Quaternion.Euler(0f, Latest.yaw, 0f);
+            // what Risk of Rain 2 sends the other players as the body's facing: they see V1 turned the way it looks
+            if (body.characterDirection != null) body.characterDirection.yaw = Latest.yaw;
             // ULTRAKILL's HP is V1's health: the body shows the same share of its own (overheal has no place to go)
             var hc = body.healthComponent;
             if (hc != null && hc.alive)

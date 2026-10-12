@@ -54,6 +54,10 @@ namespace V1Bridge.Ror
             body.levelRegen = 0f;
             ApplyHealth();
             BodyPrefab.AddComponent<V1HealthLink>();
+            // what the other players see where V1 is: the mod's own figure, in place of the Commando the body was copied from
+            var modelTransform = BodyPrefab.GetComponent<ModelLocator>() != null ? BodyPrefab.GetComponent<ModelLocator>().modelTransform : null;
+            if (modelTransform != null) modelTransform.gameObject.AddComponent<V1Figure>();
+            else Plugin.Log.LogWarning("V1's body has no model to put the figure on");
 
             var skills = BodyPrefab.GetComponent<SkillLocator>();
             Skill(skills.primary, "Primary", "V1BRIDGE_V1_PRIMARY", new Color(0.25f, 0.55f, 1f));
@@ -142,28 +146,41 @@ namespace V1Bridge.Ror
         /// ULTRAKILL install: a blue figure with a yellow eye and wings.</summary>
         static GameObject Display()
         {
-            var shader = Addressables.LoadAssetAsync<Shader>("RoR2/Base/Shaders/HGStandard.shader").WaitForCompletion() ?? LegacyShaderAPI.Find("Hopoo Games/Deferred/Standard");
-            Material Mat(Color c, float glow = 0.25f)
-            {
-                var m = new Material(shader) { color = c };
-                m.SetColor("_EmColor", c * glow);
-                return m;
-            }
-            var blue = Mat(Blue);
-            var plate = Mat(new Color(0.28f, 0.5f, 0.92f), 0.35f);
-            var yellow = Mat(Yellow, 0.6f);
-            var lens = Mat(new Color(1f, 0.97f, 0.75f), 0.8f);
-            var dark = Mat(new Color(0.12f, 0.12f, 0.14f));
-
             var root = new GameObject("V1DisplayTemp");
             // character select looks at the display's front (+z), as it does at the model read out of ULTRAKILL
             var model = new GameObject("Model");
             model.transform.SetParent(root.transform, false);
+            BuildFigure(model.transform);
+            var prefab = PrefabAPI.InstantiateClone(root, "V1Display", false);
+            UnityEngine.Object.Destroy(root);
+            return prefab;
+        }
+
+        static Material[] figureMaterials;
+
+        /// <summary>The mod's own V1, made of primitives under <paramref name="parent"/>: feet at its origin, facing +z,
+        /// 2.05 units tall. It stands in character select until ULTRAKILL's model has arrived, and is what the other
+        /// players see where V1 is in a run (V1Figure). Nothing in it comes from ULTRAKILL.</summary>
+        public static void BuildFigure(Transform parent)
+        {
+            if (figureMaterials == null || figureMaterials[0] == null)
+            {
+                var shader = Addressables.LoadAssetAsync<Shader>("RoR2/Base/Shaders/HGStandard.shader").WaitForCompletion() ?? LegacyShaderAPI.Find("Hopoo Games/Deferred/Standard");
+                Material Mat(Color c, float glow = 0.25f)
+                {
+                    var m = new Material(shader) { color = c, hideFlags = HideFlags.HideAndDontSave };
+                    m.SetColor("_EmColor", c * glow);
+                    return m;
+                }
+                figureMaterials = new[] { Mat(Blue), Mat(new Color(0.28f, 0.5f, 0.92f), 0.35f), Mat(Yellow, 0.6f), Mat(new Color(1f, 0.97f, 0.75f), 0.8f), Mat(new Color(0.12f, 0.12f, 0.14f)) };
+            }
+            Material blue = figureMaterials[0], plate = figureMaterials[1], yellow = figureMaterials[2], lens = figureMaterials[3], dark = figureMaterials[4];
             void Part(PrimitiveType type, Material m, Vector3 pos, Vector3 scale, Vector3 euler = default)
             {
                 var go = GameObject.CreatePrimitive(type);
                 UnityEngine.Object.DestroyImmediate(go.GetComponent<Collider>());
-                go.transform.SetParent(model.transform, false);
+                go.layer = parent.gameObject.layer;
+                go.transform.SetParent(parent, false);
                 go.transform.localPosition = pos;
                 go.transform.localScale = scale;
                 go.transform.localEulerAngles = euler;
@@ -200,9 +217,6 @@ namespace V1Bridge.Ror
                 Part(PrimitiveType.Cube, yellow, new Vector3(side * 0.09f, 1.5f, 0.165f), new Vector3(0.07f, 0.025f, 0.01f), new Vector3(0f, 0f, side * 20f)); // chest light
             }
             Part(PrimitiveType.Cube, dark, new Vector3(0f, 1.47f, -0.18f), new Vector3(0.26f, 0.3f, 0.12f));              // where the wings sit
-            var prefab = PrefabAPI.InstantiateClone(root, "V1Display", false);
-            UnityEngine.Object.Destroy(root);
-            return prefab;
         }
 
         static void Text()

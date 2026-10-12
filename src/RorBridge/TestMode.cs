@@ -96,6 +96,7 @@ namespace V1Bridge.Ror
                 case "coinshot": body = CoinsAgainstHitscan(); break;
                 case "moonorbs": body = MoonOrbs(); break;
                 case "lasthp": body = LastHp(); break;
+                case "figure": body = FigureTest(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -2315,6 +2316,89 @@ namespace V1Bridge.Ror
             Check("a hit on a V1 with 1 HP is sent on in full", V1HealthLink.HurtsSent > hurts0 && V1HealthLink.LastHurt > 15f, metrics["last_hit"]);
             Check("and kills it: the run ends", V1Drive.UkDead && Run.instance != null && Run.instance.isGameOverServer, metrics["last_hit"]);
             yield return new WaitForSecondsRealtime(3f);
+            yield return BackToTitle();
+        }
+
+        /// <summary>What another player sees where V1 is: the mod's own figure in place of the Commando, standing on the
+        /// ground and facing as the body faces; and the player inside V1 sees none of it. (One game stands for both: a
+        /// V1 body that is nobody's, looked at as Commando, then the player's own. A second player was not there.)</summary>
+        IEnumerator FigureTest()
+        {
+            V1Drive.Script = () => default;
+            yield return ToTitle();
+            if (failed) yield break;
+            Check("the patch that keeps the Commando's meshes off V1 is on", V1Figure.Problem == null, V1Figure.Problem ?? "");
+            var commando = SurvivorCatalog.FindSurvivorDef("Commando");
+            if (!Check("Commando found", commando != null)) yield break;
+            yield return ToLobby();
+            if (failed) yield break;
+            yield return Pick(commando);
+            yield return StartRun();
+            if (failed) yield break;
+            var user = LocalUserManager.GetFirstLocalUser();
+            var me = user.cachedBody;
+            QuietStage(me);
+            yield return new WaitForSecondsRealtime(3f);
+            var sceneCam = user.cameraRigController != null ? user.cameraRigController.sceneCam : null;
+            if (!Check("RoR2 scene camera found", sceneCam != null)) yield break;
+            var cam = sceneCam.transform;
+            // on the ground a third of the way across the picture: beside the drop pod the Commando is still sitting in
+            Vector3 spot = me.footPosition + cam.right * -4f;
+            if (Physics.Raycast(sceneCam.ViewportPointToRay(new Vector3(0.3f, 0.5f, 0f)), out var ground, 200f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore)) spot = ground.point;
+            Vector3 flat = Vector3.ProjectOnPlane(spot - cam.position, Vector3.up).normalized;
+            var go = Instantiate(V1Survivor.BodyPrefab, spot + Vector3.up * 1.2f, Quaternion.identity);
+            var other = go.GetComponent<CharacterBody>();
+            go.GetComponent<TeamComponent>().teamIndex = TeamIndex.Player;
+            UnityEngine.Networking.NetworkServer.Spawn(go);
+            yield return new WaitForSecondsRealtime(1f);
+            float facing = Quaternion.LookRotation(-flat).eulerAngles.y;
+            if (other != null && other.characterDirection != null) other.characterDirection.yaw = facing;
+            // its skin is put on a moment after it appears, and Risk of Rain 2 sets its renderers again then
+            yield return new WaitForSecondsRealtime(4f);
+            if (!Check("a V1 body that is not the player's stands in the stage", other != null && other.healthComponent != null && other.healthComponent.alive)) yield break;
+            var figure = V1Figure.On(other);
+            if (!Check("it carries the figure, shown", figure != null && figure.activeInHierarchy, figure == null ? "no figure" : "active " + figure.activeInHierarchy)) yield break;
+            int parts = 0;
+            var bounds = new Bounds(figure.transform.position, Vector3.zero);
+            foreach (var r in figure.GetComponentsInChildren<Renderer>()) if (r.enabled) { parts++; bounds.Encapsulate(r.bounds); }
+            var model = other.modelLocator.modelTransform.GetComponent<CharacterModel>();
+            int commandoOn = 0, commandoAll = 0;
+            foreach (var info in model.baseRendererInfos) { if (info.renderer == null) continue; commandoAll++; if (info.renderer.enabled) commandoOn++; }
+            float turnedTo = Vector3.Angle(Vector3.ProjectOnPlane(figure.transform.forward, Vector3.up), -flat);
+            metrics["figure"] = parts + " parts drawn, " + F(bounds.size.y) + " m tall, its feet " + F(bounds.min.y - other.footPosition.y) + " m above the body's, " + F(turnedTo) + " degrees off the way the body was turned; Commando's own renderers on: " + commandoOn + " of " + commandoAll;
+            Check("the figure is all there", parts >= 30, metrics["figure"]);
+            Check("none of the Commando's own meshes is drawn", commandoAll > 0 && commandoOn == 0, metrics["figure"]);
+            Check("it stands a survivor's height, feet on the ground", bounds.size.y > 1.6f && bounds.size.y < 2.3f && Mathf.Abs(bounds.min.y - other.footPosition.y) < 0.3f, metrics["figure"]);
+            Check("it faces the way the body faces", turnedTo < 15f, metrics["figure"]);
+            yield return SnapRor("ror2-v1-seen-by-another");
+            yield return BackToTitle();
+            if (failed) yield break;
+
+            // the player inside V1
+            yield return ToLobby();
+            if (failed) yield break;
+            yield return Pick(V1Survivor.Def);
+            float t = Now;
+            while (!V1Drive.UkReady && UkLink.Problem == null && UkLauncher.Problem == null && Now - t < 150f) yield return null;
+            if (!Check("ULTRAKILL reached the Sandbox and stripped it", V1Drive.UkReady, V1Drive.UkReady ? "" : UkLink.Problem ?? UkLauncher.Problem ?? "last seen in " + V1Drive.UkLoading)) yield break;
+            yield return StartRun();
+            if (failed) yield break;
+            t = Now;
+            while (!V1Drive.UkLanded && Now - t < 30f) yield return null;
+            if (!Check("V1 landed in ULTRAKILL", V1Drive.UkLanded, V1Drive.LandedInfo)) yield break;
+            yield return new WaitForSecondsRealtime(4f);
+            var mine = user.cachedBody;
+            var own = V1Figure.On(mine);
+            int drawn = 0;
+            foreach (var r in mine.modelLocator.modelTransform.GetComponentsInChildren<Renderer>()) if (r.enabled) drawn++;
+            Check("the player inside V1 is not shown the figure", own != null && !own.activeInHierarchy && drawn == 0, own == null ? "no figure" : "active " + own.activeInHierarchy + ", " + drawn + " renderers on under the model");
+            yield return Hold(0.5f, new V1Drive.Frame { dx = 12f });
+            yield return new WaitForSecondsRealtime(0.5f);
+            float sent = mine.characterDirection != null ? mine.characterDirection.yaw : float.NaN;
+            metrics["facing_sent"] = "the body's facing " + F(sent) + ", V1's view " + F(V1Drive.Latest.yaw);
+            Check("the facing the other players are sent is V1's", mine.characterDirection != null && Mathf.Abs(Mathf.DeltaAngle(sent, V1Drive.Latest.yaw)) < 3f, metrics["facing_sent"]);
+            yield return SnapRor("ror2-as-v1");
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && mine != null && mine.healthComponent.alive);
             yield return BackToTitle();
         }
 
