@@ -260,6 +260,15 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   `HURT` went out, and V1 could not die to RoR2 damage (with 110 health it still could, just: 1 HP was 1.1). Where the
   body's health ends a hit at the floor, the hit now counts for `DamageReport.damageDealt` (RoR2's figure after
   armor and one-shot protection) less what the barrier absorbed, if that is more than what was measured.
+- Install without .NET (2026-10-12, on a second PC): the .NET SDK installer failed there (Windows Installer could not find
+  one of the bundle's own packages and rolled back), and the old `Install.ps1` threw before its winget step on a PC with
+  no `dotnet` at all. Now: `Install.ps1` copies `prebuilt\RorBridge.dll` and `prebuilt\UkBridge.dll` into the profiles
+  when both are there (no compiling, no .NET); otherwise, or with `-Build`, it builds, using an installed SDK or, when
+  there is none, Microsoft's SDK ZIP unpacked into `.tools\dotnet` (`Install-LocalSdk` in `Common.ps1`: latest 8.0 from
+  the release list, SHA-512 checked, no installer, no administrator rights). `Build.ps1 -Pack` fills `prebuilt\`.
+  `Install.cmd` and `Play.cmd` are double-click launchers that keep the window open. `prebuilt\` holds only the mod's
+  own code; whether it is committed or attached to a release is the owner's call, and it has to be re-packed whenever
+  the source changes (both DLLs together: they share the protocol number).
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -301,6 +310,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-12 | second PC (Windows 11, Intel Arc 130V, RoR2BepInExPack 1.46.0, R2API ContentManagement 1.1.0), built with the SDK ZIP: handshake, picture (golemplains), geometry (snowyforest) | PASS: handshake 16/16, picture 32/32, geometry 29/29, 0 real files changed, 0 exceptions. The first handshake run reported 1 real file changed: the RoR2 profile, replaced by Steam Cloud at launch with a newer one from the other PC (its timestamp was two days before the run; a re-run changed nothing) | picture: 1280x720, 55 fps shown, frame age 28 ms avg / 44 ms p95, input to frame 41 ms, merge 8.4 ms. Siphoned Forest: 355 colliders, 327,073 triangles, 25 meshes straight from Direct3D (first run of D3D11Read on a second graphics card), 1 skipped (SF_FirepitRing), ground 81/81. Not run here: every other scenario. The install from `prebuilt\` was run only on this PC, where the profiles already existed |
 | 2026-10-11 | lasthp (golemplains) | PASS (1 run, 19/19, 0 real files changed, 0 exceptions) | at 10 HP a 5.4-damage hit cost 6 (10 -> 4); at 1 HP (body health 1 of 90) an 18-damage hit went out as HURT 20, V1 died and the run ended 2 s later. Before the fix that last hit sent nothing (the owner's report: V1 could not fall below 1) |
 | 2026-10-11 | moonorbs (moon2, Commencement) | PASS (1 run, 21/21, 0 real files changed) with no code change | the escape objects switched on by hand as beating Mithrix does: 5 exit orbs; V1 put into one (9.2 m across) was taken 0.25 s later, stood 9.8 m from the orb's destination 670 m below, 2 mm above the ground, body with it, one teleport, HP 100 -> 100. Commencement itself: 1,491 colliders, 662,271 triangles, exported in 482 ms. Not run: the fight, the orbs as it really leaves them, the ship. The run logs 1 RoR2 exception from `ModelSkinController.ApplySkinAsync` (also seen once in an items run; not looked into) |
 | 2026-10-11 | items, with the body-effect checks (golemplains) | PASS (1 run, 26/26, 0 real files changed) | every non-lunar item: 0 buff or item visuals on V1 (33 refused), 10 things attached to the body (Focus Crystal's ring, the Unstable Tesla Coil's aura, Headstompers...) with 0 renderers on, 0 on under the body; the screenshot no longer has the bubbles round the view. Still there: ground zones, allies and drones with their own items |

@@ -22,12 +22,14 @@ No game files are in this repository; both plugins are compiled against your own
 
 ## Install
 
-```
-powershell -ExecutionPolicy Bypass -File tools\Install.ps1
-```
+Extract the ZIP to a folder with a short path (for example `C:\V1Bridge`), then double-click **`Install.cmd`**
+(or run `powershell -ExecutionPolicy Bypass -File tools\Install.ps1`).
 
-It finds both games through Steam, installs the .NET SDK if it is missing, downloads BepInEx, R2API and Risk of Options
-from Thunderstore/GitHub into `profiles\`, and builds the two plugins. Your games stay as they are, with one exception:
+It finds both games through Steam and downloads BepInEx, R2API and Risk of Options from Thunderstore/GitHub into
+`profiles\`. The two plugins are taken ready-built from `prebuilt\` when that folder is there, so nothing is compiled
+and no .NET is needed. Otherwise (or with `Install.cmd -Build`) they are built against your own games: with an
+installed .NET SDK if there is one, else with a copy of the .NET 8 SDK fetched as a plain ZIP into `.tools\dotnet`
+(about 270 MB, no installer, nothing added to Windows). Your games stay as they are, with one exception:
 
 - **ULTRAKILL's folder** gets Doorstop 4 (`winhttp.dll`, `doorstop_config.ini`, `.doorstop_version`), because the older
   Doorstop 3 does not load on ULTRAKILL's Unity version. The replaced files are backed up to
@@ -39,9 +41,7 @@ Your r2modman profiles are not touched.
 
 ## Play
 
-```
-powershell -ExecutionPolicy Bypass -File tools\Play.ps1
-```
+Double-click **`Play.cmd`** (or run `powershell -ExecutionPolicy Bypass -File tools\Play.ps1`). Steam has to be running.
 
 Singleplayer → pick **V1** (the last survivor) → wait a few seconds while ULTRAKILL loads in the background → start.
 Picking any other survivor is plain Risk of Rain 2. ULTRAKILL closes when Risk of Rain 2 does.
@@ -92,7 +92,8 @@ ULTRAKILL's own options (field of view, sensitivity, HUD, graphics) are in `prof
 
 - Logs: `profiles\ror2\BepInEx\LogOutput.log` and `profiles\uk\BepInEx\LogOutput.log`.
 - "ULTRAKILL needs Doorstop 4": run `tools\Install-UkDoorstop.ps1`.
-- After a game update: run `tools\Build.ps1` again; if RoR2's mods broke, `tools\Setup-Profiles.ps1 -Force` fetches current ones.
+- "Risk of Rain 2 has no Doorstop proxy": Risk of Rain 2 has never been modded on this PC; install BepInExPack once with r2modman.
+- After a game update: run `Install.cmd -Build` (or `tools\Build.ps1`) again; if RoR2's mods broke, `tools\Setup-Profiles.ps1 -Force` fetches current ones.
 - Known limits and open issues are listed in [NOTES.md](NOTES.md).
 
 ## For development
