@@ -2371,6 +2371,38 @@ namespace V1Bridge.Ror
             Check("it stands a survivor's height, feet on the ground", bounds.size.y > 1.6f && bounds.size.y < 2.3f && Mathf.Abs(bounds.min.y - other.footPosition.y) < 0.3f, metrics["figure"]);
             Check("it faces the way the body faces", turnedTo < 15f, metrics["figure"]);
             yield return SnapRor("ror2-v1-seen-by-another");
+
+            // carried along the ground, as Risk of Rain 2 carries a player's body about: its limbs swing; put down, they stop
+            var motion = figure.GetComponent<V1FigureMotion>();
+            if (Check("the figure has its motion", motion != null))
+            {
+                float stood = motion.Swing;
+                // across the picture, away from the drop pod, turned the way it goes
+                Vector3 along = -Vector3.Cross(Vector3.up, flat).normalized;
+                if (other.characterDirection != null) other.characterDirection.yaw = Quaternion.LookRotation(along).eulerAngles.y;
+                float maxSwing = 0f, maxLegs = 0f, t0 = Now;
+                bool snapped = false;
+                while (Now - t0 < 2.2f && other != null)
+                {
+                    Vector3 next = other.transform.position + along * 6f * Time.deltaTime;
+                    if (Physics.Raycast(next + Vector3.up * 3f, Vector3.down, out var under, 8f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore)) next.y = under.point.y + (other.transform.position.y - other.footPosition.y);
+                    if (other.characterMotor != null) other.characterMotor.Motor.SetPosition(next);
+                    else other.transform.position = next;
+                    maxSwing = Mathf.Max(maxSwing, motion.Swing);
+                    maxLegs = Mathf.Max(maxLegs, motion.LegSpread);
+                    if (!snapped && Now - t0 > 1.2f)
+                    {
+                        snapped = true;
+                        ScreenCapture.CaptureScreenshot(Path.Combine(outDir, "ror2-v1-running.png"));
+                    }
+                    yield return null;
+                }
+                yield return new WaitForSecondsRealtime(1.5f);
+                metrics["figure_motion"] = "standing: swing " + F(stood) + "; carried at 6 m/s: swing up to " + F(maxSwing) + ", legs up to " + F(maxLegs) + " degrees apart; put down again: swing " + F(motion.Swing) + ", falling pose " + F(motion.Air);
+                Check("standing still, its limbs are still", stood < 0.05f, metrics["figure_motion"]);
+                Check("carried along the ground, its legs swing", maxSwing > 0.5f && maxLegs > 25f, metrics["figure_motion"]);
+                Check("put down, it stops and stands", motion.Swing < 0.05f && motion.Air < 0.05f, metrics["figure_motion"]);
+            }
             yield return BackToTitle();
             if (failed) yield break;
 

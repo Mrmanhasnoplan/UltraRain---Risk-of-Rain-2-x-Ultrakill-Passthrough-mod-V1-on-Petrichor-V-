@@ -280,7 +280,11 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   The Commando's meshes are kept off by a postfix on `CharacterModel.UpdateMaterials` (RoR2 sets each base renderer's
   `enabled` there, also after a skin is applied), patched by hand, for models carrying a `V1Figure`. So that the
   figure turns, `V1Drive.LateTick` writes V1's yaw to `CharacterDirection.yaw`: `CharacterNetworkTransform`'s snapshot
-  sends that (not the transform's rotation) as the body's facing. The figure's limbs do not move. Item displays are
+  sends that (not the transform's rotation) as the body's facing. The figure's limbs are moved by `V1FigureMotion`
+  (2026-10-13), code of the mod's own: the parts hang on named joints (`BuildFigure`), and each game works the pose out
+  from how the figure is carried about (speed over the ground: stride, arm swing, lean, wings swept back; no ground
+  within 0.7 m under it: a falling pose; still: an idle sway), so nothing extra is networked and no ULTRAKILL
+  animation is involved. Slides, dashes and punches are not told apart: a slide looks like a fast run. Item displays are
   untouched: they still hang on the hidden Commando skeleton, so friends may see items floating about the figure.
   `Install.ps1` no longer needs ULTRAKILL when `prebuilt\` is there: it sets up Risk of Rain 2's side only, for
   joining a V1 host. With no .decomp on this PC, RoR2's code was read as IL with the Mono.Cecil in the profile.
@@ -325,6 +329,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-13 | figure, with the limb motion (golemplains) | PASS (2 runs, 36/36, 0 real files changed, 0 exceptions) | standing: swing 0; carried along the ground at 6 m/s: swing 0.88, legs up to 73 degrees apart, leaning into the run in the screenshot; put down: swing 0, no falling pose. The falling pose itself and a real player's movement (dashes, slides, jumps) were not run |
 | 2026-10-12 | figure (golemplains) | PASS (1 run of the final version, 32/32, 0 real files changed, 0 exceptions); items re-run afterwards: PASS 26/26 | a V1 body that is nobody's, looked at as Commando: 36 parts drawn, feet 1 cm above the body's, facing as the body was turned, 0 of the Commando's 3 renderers on. As V1: own figure not shown, 0 renderers on under the model, the body's facing equal to V1's view after a turn. One game only: NOT run with a second player, so that the figure and its facing arrive on a friend's screen is untested; so is the install on a PC without ULTRAKILL |
 | 2026-10-12 | second PC (Windows 11, Intel Arc 130V, RoR2BepInExPack 1.46.0, R2API ContentManagement 1.1.0), built with the SDK ZIP: handshake, picture (golemplains), geometry (snowyforest) | PASS: handshake 16/16, picture 32/32, geometry 29/29, 0 real files changed, 0 exceptions. The first handshake run reported 1 real file changed: the RoR2 profile, replaced by Steam Cloud at launch with a newer one from the other PC (its timestamp was two days before the run; a re-run changed nothing) | picture: 1280x720, 55 fps shown, frame age 28 ms avg / 44 ms p95, input to frame 41 ms, merge 8.4 ms. Siphoned Forest: 355 colliders, 327,073 triangles, 25 meshes straight from Direct3D (first run of D3D11Read on a second graphics card), 1 skipped (SF_FirepitRing), ground 81/81. Not run here: every other scenario. The install from `prebuilt\` was run only on this PC, where the profiles already existed |
 | 2026-10-11 | lasthp (golemplains) | PASS (1 run, 19/19, 0 real files changed, 0 exceptions) | at 10 HP a 5.4-damage hit cost 6 (10 -> 4); at 1 HP (body health 1 of 90) an 18-damage hit went out as HURT 20, V1 died and the run ended 2 s later. Before the fix that last hit sent nothing (the owner's report: V1 could not fall below 1) |

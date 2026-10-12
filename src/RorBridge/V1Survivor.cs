@@ -175,48 +175,68 @@ namespace V1Bridge.Ror
                 figureMaterials = new[] { Mat(Blue), Mat(new Color(0.28f, 0.5f, 0.92f), 0.35f), Mat(Yellow, 0.6f), Mat(new Color(1f, 0.97f, 0.75f), 0.8f), Mat(new Color(0.12f, 0.12f, 0.14f)) };
             }
             Material blue = figureMaterials[0], plate = figureMaterials[1], yellow = figureMaterials[2], lens = figureMaterials[3], dark = figureMaterials[4];
-            void Part(PrimitiveType type, Material m, Vector3 pos, Vector3 scale, Vector3 euler = default)
+            // joints: empty transforms the parts hang on, so V1FigureMotion can swing them. Positions are the figure's own.
+            var at = new System.Collections.Generic.Dictionary<Transform, Vector3> { { parent, Vector3.zero } };
+            Transform Joint(string name, Vector3 pos, Transform under)
             {
+                var t = new GameObject(name).transform;
+                t.gameObject.layer = parent.gameObject.layer;
+                t.SetParent(under, false);
+                t.localPosition = pos - at[under];
+                at[t] = pos;
+                return t;
+            }
+            void Part(PrimitiveType type, Material m, Vector3 pos, Vector3 scale, Vector3 euler = default, Transform under = null)
+            {
+                if (under == null) under = parent;
                 var go = GameObject.CreatePrimitive(type);
                 UnityEngine.Object.DestroyImmediate(go.GetComponent<Collider>());
                 go.layer = parent.gameObject.layer;
-                go.transform.SetParent(parent, false);
-                go.transform.localPosition = pos;
+                go.transform.SetParent(under, false);
+                go.transform.localPosition = pos - at[under];
                 go.transform.localScale = scale;
                 go.transform.localEulerAngles = euler;
                 go.GetComponent<MeshRenderer>().sharedMaterial = m;
             }
             // a slim machine, about 2 m tall: dark frame, blue plating, a box of a head with one lit lens
-            Part(PrimitiveType.Cube, plate, new Vector3(0f, 1.46f, 0.01f), new Vector3(0.46f, 0.3f, 0.27f));              // chest
-            Part(PrimitiveType.Cube, blue, new Vector3(0f, 1.5f, 0.13f), new Vector3(0.3f, 0.18f, 0.06f));                // chest plate
-            Part(PrimitiveType.Capsule, dark, new Vector3(0f, 1.2f, 0f), new Vector3(0.25f, 0.17f, 0.2f));                // waist
-            Part(PrimitiveType.Cube, blue, new Vector3(0f, 1.03f, 0f), new Vector3(0.36f, 0.15f, 0.23f));                 // hips
-            Part(PrimitiveType.Cylinder, dark, new Vector3(0f, 1.66f, 0f), new Vector3(0.11f, 0.05f, 0.11f));             // neck
-            Part(PrimitiveType.Cube, dark, new Vector3(0f, 1.87f, 0.01f), new Vector3(0.3f, 0.3f, 0.34f));                // head
-            Part(PrimitiveType.Cube, blue, new Vector3(0f, 2.03f, -0.01f), new Vector3(0.22f, 0.03f, 0.3f));              // its top plate
-            Part(PrimitiveType.Cylinder, yellow, new Vector3(0f, 1.87f, 0.18f), new Vector3(0.2f, 0.015f, 0.2f), new Vector3(90f, 0f, 0f)); // eye
-            Part(PrimitiveType.Sphere, lens, new Vector3(0f, 1.87f, 0.185f), new Vector3(0.1f, 0.1f, 0.05f));
+            var body = Joint("body", new Vector3(0f, 1f, 0f), parent);
+            Part(PrimitiveType.Cube, plate, new Vector3(0f, 1.46f, 0.01f), new Vector3(0.46f, 0.3f, 0.27f), default, body);              // chest
+            Part(PrimitiveType.Cube, blue, new Vector3(0f, 1.5f, 0.13f), new Vector3(0.3f, 0.18f, 0.06f), default, body);                // chest plate
+            Part(PrimitiveType.Capsule, dark, new Vector3(0f, 1.2f, 0f), new Vector3(0.25f, 0.17f, 0.2f), default, body);                // waist
+            Part(PrimitiveType.Cube, blue, new Vector3(0f, 1.03f, 0f), new Vector3(0.36f, 0.15f, 0.23f), default, body);                 // hips
+            Part(PrimitiveType.Cylinder, dark, new Vector3(0f, 1.66f, 0f), new Vector3(0.11f, 0.05f, 0.11f), default, body);             // neck
+            var head = Joint("head", new Vector3(0f, 1.7f, 0f), body);
+            Part(PrimitiveType.Cube, dark, new Vector3(0f, 1.87f, 0.01f), new Vector3(0.3f, 0.3f, 0.34f), default, head);                // head
+            Part(PrimitiveType.Cube, blue, new Vector3(0f, 2.03f, -0.01f), new Vector3(0.22f, 0.03f, 0.3f), default, head);              // its top plate
+            Part(PrimitiveType.Cylinder, yellow, new Vector3(0f, 1.87f, 0.18f), new Vector3(0.2f, 0.015f, 0.2f), new Vector3(90f, 0f, 0f), head); // eye
+            Part(PrimitiveType.Sphere, lens, new Vector3(0f, 1.87f, 0.185f), new Vector3(0.1f, 0.1f, 0.05f), default, head);
             for (int side = -1; side <= 1; side += 2)
             {
-                Part(PrimitiveType.Sphere, plate, new Vector3(side * 0.31f, 1.56f, 0f), new Vector3(0.2f, 0.2f, 0.2f));   // shoulder
-                Part(PrimitiveType.Capsule, dark, new Vector3(side * 0.36f, 1.33f, 0f), new Vector3(0.11f, 0.2f, 0.11f), new Vector3(0f, 0f, side * 8f)); // upper arm
-                Part(PrimitiveType.Capsule, blue, new Vector3(side * 0.4f, 1.01f, 0.04f), new Vector3(0.13f, 0.2f, 0.13f), new Vector3(-10f, 0f, side * 4f)); // forearm
-                Part(PrimitiveType.Sphere, dark, new Vector3(side * 0.41f, 0.79f, 0.08f), new Vector3(0.12f, 0.14f, 0.12f)); // hand
-                Part(PrimitiveType.Capsule, dark, new Vector3(side * 0.13f, 0.8f, 0f), new Vector3(0.16f, 0.24f, 0.16f)); // thigh
-                Part(PrimitiveType.Sphere, blue, new Vector3(side * 0.13f, 0.57f, 0.03f), new Vector3(0.15f, 0.15f, 0.15f)); // knee
-                Part(PrimitiveType.Capsule, blue, new Vector3(side * 0.13f, 0.31f, 0f), new Vector3(0.14f, 0.26f, 0.14f)); // shin
-                Part(PrimitiveType.Cube, dark, new Vector3(side * 0.13f, 0.04f, 0.05f), new Vector3(0.14f, 0.08f, 0.3f)); // foot
+                string s = side < 0 ? "L" : "R";
+                Part(PrimitiveType.Sphere, plate, new Vector3(side * 0.31f, 1.56f, 0f), new Vector3(0.2f, 0.2f, 0.2f), default, body);   // shoulder
+                var arm = Joint("arm" + s, new Vector3(side * 0.33f, 1.52f, 0f), body);
+                Part(PrimitiveType.Capsule, dark, new Vector3(side * 0.36f, 1.33f, 0f), new Vector3(0.11f, 0.2f, 0.11f), new Vector3(0f, 0f, side * 8f), arm); // upper arm
+                var elbow = Joint("elbow" + s, new Vector3(side * 0.385f, 1.17f, 0.01f), arm);
+                Part(PrimitiveType.Capsule, blue, new Vector3(side * 0.4f, 1.01f, 0.04f), new Vector3(0.13f, 0.2f, 0.13f), new Vector3(-10f, 0f, side * 4f), elbow); // forearm
+                Part(PrimitiveType.Sphere, dark, new Vector3(side * 0.41f, 0.79f, 0.08f), new Vector3(0.12f, 0.14f, 0.12f), default, elbow); // hand
+                var leg = Joint("leg" + s, new Vector3(side * 0.13f, 0.97f, 0f), parent);
+                Part(PrimitiveType.Capsule, dark, new Vector3(side * 0.13f, 0.8f, 0f), new Vector3(0.16f, 0.24f, 0.16f), default, leg); // thigh
+                var knee = Joint("knee" + s, new Vector3(side * 0.13f, 0.57f, 0.01f), leg);
+                Part(PrimitiveType.Sphere, blue, new Vector3(side * 0.13f, 0.57f, 0.03f), new Vector3(0.15f, 0.15f, 0.15f), default, knee); // knee
+                Part(PrimitiveType.Capsule, blue, new Vector3(side * 0.13f, 0.31f, 0f), new Vector3(0.14f, 0.26f, 0.14f), default, knee); // shin
+                Part(PrimitiveType.Cube, dark, new Vector3(side * 0.13f, 0.04f, 0.05f), new Vector3(0.14f, 0.08f, 0.3f), default, knee); // foot
                 // wings: four blades fanned out from the back, the top one longest
                 for (int i = 0; i < 4; i++)
                 {
                     float angle = 52f - i * 27f, length = 0.85f - i * 0.1f;
                     var dir = new Vector3(side * Mathf.Cos(angle * Mathf.Deg2Rad), Mathf.Sin(angle * Mathf.Deg2Rad), 0f);
-                    Part(PrimitiveType.Cube, plate, new Vector3(side * 0.08f, 1.5f, -0.24f) + dir * (0.12f + length * 0.5f),
-                        new Vector3(length, 0.1f, 0.025f), new Vector3(0f, 0f, side * angle));
+                    var root = new Vector3(side * 0.08f, 1.5f, -0.24f);
+                    var wing = Joint("wing" + s + i, root, body);
+                    Part(PrimitiveType.Cube, plate, root + dir * (0.12f + length * 0.5f), new Vector3(length, 0.1f, 0.025f), new Vector3(0f, 0f, side * angle), wing);
                 }
-                Part(PrimitiveType.Cube, yellow, new Vector3(side * 0.09f, 1.5f, 0.165f), new Vector3(0.07f, 0.025f, 0.01f), new Vector3(0f, 0f, side * 20f)); // chest light
+                Part(PrimitiveType.Cube, yellow, new Vector3(side * 0.09f, 1.5f, 0.165f), new Vector3(0.07f, 0.025f, 0.01f), new Vector3(0f, 0f, side * 20f), body); // chest light
             }
-            Part(PrimitiveType.Cube, dark, new Vector3(0f, 1.47f, -0.18f), new Vector3(0.26f, 0.3f, 0.12f));              // where the wings sit
+            Part(PrimitiveType.Cube, dark, new Vector3(0f, 1.47f, -0.18f), new Vector3(0.26f, 0.3f, 0.12f), default, body);              // where the wings sit
         }
 
         static void Text()

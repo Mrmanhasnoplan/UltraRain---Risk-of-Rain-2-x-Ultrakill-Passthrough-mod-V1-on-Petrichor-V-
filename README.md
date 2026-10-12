@@ -20,8 +20,8 @@ same for Minecraft. Licence: MIT ([LICENSE](LICENSE), [third-party notices](THIR
 You need to own **ULTRAKILL** and **Risk of Rain 2** on Steam. Windows only.
 
 Multiplayer, in part: the **host** can play V1 with friends who play ordinary survivors. Every player needs the mod.
-Friends see V1 as a blue winged figure the mod builds itself (it glides: its limbs do not move), turned the way V1
-looks; they do not see V1's shots, coins or explosions. A friend who does not own ULTRAKILL can install the mod too,
+Friends see V1 as a blue winged figure the mod builds and animates itself (it runs, leans and falls; it does not show
+slides, dashes or punches as such), turned the way V1 looks; they do not see V1's shots, coins or explosions. A friend who does not own ULTRAKILL can install the mod too,
 from a download that has the `prebuilt` folder, to join such a game; playing V1 needs ULTRAKILL. V1 as a joining
 player, or more than one V1, does not work.
 No game files are in this repository; both plugins are compiled against your own installs.
