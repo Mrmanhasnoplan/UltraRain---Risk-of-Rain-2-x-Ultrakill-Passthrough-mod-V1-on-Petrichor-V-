@@ -269,6 +269,10 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   `Install.cmd` and `Play.cmd` are double-click launchers that keep the window open. `prebuilt\` holds only the mod's
   own code; whether it is committed or attached to a release is the owner's call, and it has to be re-packed whenever
   the source changes (both DLLs together: they share the protocol number).
+- The placeholder figure in character select (first-ever visit, before a model has come from ULTRAKILL) was rebuilt
+  2026-10-12: a jointed machine of 40-odd primitives with blue wing blades and a lit eye. It also stood with its back
+  to the camera (its `Model` child was turned 180 degrees; the display's front is +z, as for the real model): fixed.
+  Checked with the `model` scenario and the cache set aside (`ror2-lobby-before.png`).
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.

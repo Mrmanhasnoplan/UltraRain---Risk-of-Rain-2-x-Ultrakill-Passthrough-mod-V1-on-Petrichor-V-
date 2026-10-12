@@ -143,21 +143,22 @@ namespace V1Bridge.Ror
         static GameObject Display()
         {
             var shader = Addressables.LoadAssetAsync<Shader>("RoR2/Base/Shaders/HGStandard.shader").WaitForCompletion() ?? LegacyShaderAPI.Find("Hopoo Games/Deferred/Standard");
-            Material Mat(Color c)
+            Material Mat(Color c, float glow = 0.25f)
             {
                 var m = new Material(shader) { color = c };
-                m.SetColor("_EmColor", c * 0.25f);
+                m.SetColor("_EmColor", c * glow);
                 return m;
             }
             var blue = Mat(Blue);
-            var yellow = Mat(Yellow);
+            var plate = Mat(new Color(0.28f, 0.5f, 0.92f), 0.35f);
+            var yellow = Mat(Yellow, 0.6f);
+            var lens = Mat(new Color(1f, 0.97f, 0.75f), 0.8f);
             var dark = Mat(new Color(0.12f, 0.12f, 0.14f));
 
             var root = new GameObject("V1DisplayTemp");
-            // character select looks at the display from its back unless it is turned round
+            // character select looks at the display's front (+z), as it does at the model read out of ULTRAKILL
             var model = new GameObject("Model");
             model.transform.SetParent(root.transform, false);
-            model.transform.localEulerAngles = new Vector3(0f, 180f, 0f);
             void Part(PrimitiveType type, Material m, Vector3 pos, Vector3 scale, Vector3 euler = default)
             {
                 var go = GameObject.CreatePrimitive(type);
@@ -168,21 +169,37 @@ namespace V1Bridge.Ror
                 go.transform.localEulerAngles = euler;
                 go.GetComponent<MeshRenderer>().sharedMaterial = m;
             }
-            Part(PrimitiveType.Capsule, blue, new Vector3(0f, 1.15f, 0f), new Vector3(0.55f, 0.5f, 0.4f));              // torso
-            Part(PrimitiveType.Sphere, dark, new Vector3(0f, 1.85f, 0f), new Vector3(0.42f, 0.42f, 0.42f));               // head
-            Part(PrimitiveType.Sphere, yellow, new Vector3(0f, 1.87f, 0.17f), new Vector3(0.18f, 0.18f, 0.12f));          // eye
-            Part(PrimitiveType.Capsule, dark, new Vector3(-0.16f, 0.4f, 0f), new Vector3(0.2f, 0.42f, 0.2f));             // legs
-            Part(PrimitiveType.Capsule, dark, new Vector3(0.16f, 0.4f, 0f), new Vector3(0.2f, 0.42f, 0.2f));
-            Part(PrimitiveType.Capsule, blue, new Vector3(-0.42f, 1.2f, 0.05f), new Vector3(0.16f, 0.38f, 0.16f), new Vector3(0f, 0f, -12f)); // arms
-            Part(PrimitiveType.Capsule, blue, new Vector3(0.42f, 1.2f, 0.05f), new Vector3(0.16f, 0.38f, 0.16f), new Vector3(0f, 0f, 12f));
-            for (int side = -1; side <= 1; side += 2)                                                                     // wings
+            // a slim machine, about 2 m tall: dark frame, blue plating, a box of a head with one lit lens
+            Part(PrimitiveType.Cube, plate, new Vector3(0f, 1.46f, 0.01f), new Vector3(0.46f, 0.3f, 0.27f));              // chest
+            Part(PrimitiveType.Cube, blue, new Vector3(0f, 1.5f, 0.13f), new Vector3(0.3f, 0.18f, 0.06f));                // chest plate
+            Part(PrimitiveType.Capsule, dark, new Vector3(0f, 1.2f, 0f), new Vector3(0.25f, 0.17f, 0.2f));                // waist
+            Part(PrimitiveType.Cube, blue, new Vector3(0f, 1.03f, 0f), new Vector3(0.36f, 0.15f, 0.23f));                 // hips
+            Part(PrimitiveType.Cylinder, dark, new Vector3(0f, 1.66f, 0f), new Vector3(0.11f, 0.05f, 0.11f));             // neck
+            Part(PrimitiveType.Cube, dark, new Vector3(0f, 1.87f, 0.01f), new Vector3(0.3f, 0.3f, 0.34f));                // head
+            Part(PrimitiveType.Cube, blue, new Vector3(0f, 2.03f, -0.01f), new Vector3(0.22f, 0.03f, 0.3f));              // its top plate
+            Part(PrimitiveType.Cylinder, yellow, new Vector3(0f, 1.87f, 0.18f), new Vector3(0.2f, 0.015f, 0.2f), new Vector3(90f, 0f, 0f)); // eye
+            Part(PrimitiveType.Sphere, lens, new Vector3(0f, 1.87f, 0.185f), new Vector3(0.1f, 0.1f, 0.05f));
+            for (int side = -1; side <= 1; side += 2)
             {
+                Part(PrimitiveType.Sphere, plate, new Vector3(side * 0.31f, 1.56f, 0f), new Vector3(0.2f, 0.2f, 0.2f));   // shoulder
+                Part(PrimitiveType.Capsule, dark, new Vector3(side * 0.36f, 1.33f, 0f), new Vector3(0.11f, 0.2f, 0.11f), new Vector3(0f, 0f, side * 8f)); // upper arm
+                Part(PrimitiveType.Capsule, blue, new Vector3(side * 0.4f, 1.01f, 0.04f), new Vector3(0.13f, 0.2f, 0.13f), new Vector3(-10f, 0f, side * 4f)); // forearm
+                Part(PrimitiveType.Sphere, dark, new Vector3(side * 0.41f, 0.79f, 0.08f), new Vector3(0.12f, 0.14f, 0.12f)); // hand
+                Part(PrimitiveType.Capsule, dark, new Vector3(side * 0.13f, 0.8f, 0f), new Vector3(0.16f, 0.24f, 0.16f)); // thigh
+                Part(PrimitiveType.Sphere, blue, new Vector3(side * 0.13f, 0.57f, 0.03f), new Vector3(0.15f, 0.15f, 0.15f)); // knee
+                Part(PrimitiveType.Capsule, blue, new Vector3(side * 0.13f, 0.31f, 0f), new Vector3(0.14f, 0.26f, 0.14f)); // shin
+                Part(PrimitiveType.Cube, dark, new Vector3(side * 0.13f, 0.04f, 0.05f), new Vector3(0.14f, 0.08f, 0.3f)); // foot
+                // wings: four blades fanned out from the back, the top one longest
                 for (int i = 0; i < 4; i++)
                 {
-                    Part(PrimitiveType.Cube, yellow, new Vector3(side * (0.35f + i * 0.09f), 1.55f - i * 0.2f, -0.3f),
-                        new Vector3(0.75f, 0.07f, 0.03f), new Vector3(0f, side * 25f, side * (40f - i * 18f)));
+                    float angle = 52f - i * 27f, length = 0.85f - i * 0.1f;
+                    var dir = new Vector3(side * Mathf.Cos(angle * Mathf.Deg2Rad), Mathf.Sin(angle * Mathf.Deg2Rad), 0f);
+                    Part(PrimitiveType.Cube, plate, new Vector3(side * 0.08f, 1.5f, -0.24f) + dir * (0.12f + length * 0.5f),
+                        new Vector3(length, 0.1f, 0.025f), new Vector3(0f, 0f, side * angle));
                 }
+                Part(PrimitiveType.Cube, yellow, new Vector3(side * 0.09f, 1.5f, 0.165f), new Vector3(0.07f, 0.025f, 0.01f), new Vector3(0f, 0f, side * 20f)); // chest light
             }
+            Part(PrimitiveType.Cube, dark, new Vector3(0f, 1.47f, -0.18f), new Vector3(0.26f, 0.3f, 0.12f));              // where the wings sit
             var prefab = PrefabAPI.InstantiateClone(root, "V1Display", false);
             UnityEngine.Object.Destroy(root);
             return prefab;
