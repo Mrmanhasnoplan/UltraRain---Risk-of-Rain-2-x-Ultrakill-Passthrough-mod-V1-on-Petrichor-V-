@@ -14,17 +14,18 @@ namespace V1Bridge.Ror
     /// text over Risk of Rain 2's own connection (both games have the mod: Risk of Rain 2 only lets matching games
     /// play together). The player's picture, input, view, the stage under V1's feet and V1's movement are their own
     /// game's, as when hosting.
-    ///   joining V1 -> host:  ENG 0|1 (my bridge has hold of my body), HP hp dead, DMG monster mult head explosion hitter x y z
-    ///   host -> joining V1:  HURT n, HEAL x, CAP hp (as to ULTRAKILL: passed straight on), KILL monster, TP x y z
+    ///   joining V1 -> host:  ENG 0|1 (my bridge has hold of my body), HP hp dead, DMG monster mult head explosion hitter x y z,
+    ///                        PARRY p|b projectile (my fist caught it / a beam of mine blew it up; 0: one that had just landed)
+    ///   host -> joining V1:  HURT n, HEAL x, CAP hp (as to ULTRAKILL: passed straight on), KILL monster, PARRIED monster, TP x y z
     /// Monsters are named by their network ids; positions are Risk of Rain 2's.
-    /// Not carried over yet: parrying, the Whiplash dragging monsters, blast knockback, coins against hitscan.</summary>
+    /// Not carried over yet: the Whiplash dragging monsters, blast knockback, coins against hitscan.</summary>
     internal static class V1Net
     {
         const short ToHost = 27121, ToJoined = 27122;
         const string Engaged = "ENG";
         public static string Problem;
         /// <summary>For the tests.</summary>
-        public static int SentToHost, SentToJoined, HostHits, HostHurts, JoinedKills;
+        public static int SentToHost, SentToJoined, HostHits, HostHurts, JoinedKills, JoinedParries;
         public static string LastHostHit = "";
         /// <summary>Every line that arrives goes to the log (the tests switch it on).</summary>
         public static bool Trace;
@@ -116,6 +117,13 @@ namespace V1Bridge.Ror
             ToServer(Proto.Damage + " " + id.netId.Value + " " + S(mult) + " " + (head ? 1 : 0) + " " + (explosion ? 1 : 0) + " " + hitter + " " + S(at.x) + " " + S(at.y) + " " + S(at.z));
         }
 
+        /// <summary>This game's ULTRAKILL caught (p) or blew up (b) that projectile (0: one that had just landed): the host
+        /// removes it and deals the return.</summary>
+        public static void ClientParry(string kind, uint projectile)
+        {
+            ToServer(Proto.Parry + " " + kind + " " + projectile);
+        }
+
         static void FromHost(NetworkMessage msg)
         {
             string line = msg.ReadMessage<Line>().text ?? "";
@@ -139,6 +147,16 @@ namespace V1Bridge.Ror
                         var victim = go != null ? go.GetComponent<CharacterBody>() : null;
                         JoinedKills++;
                         if (victim != null) Monsters.Killed(victim);
+                        break;
+                    }
+                    case Proto.Parried:
+                    {
+                        // V1's punch met that monster's hit, by the host's reckoning: ULTRAKILL plays the parry
+                        var go = ClientScene.FindLocalObject(new NetworkInstanceId(uint.Parse(rest)));
+                        var monster = go != null ? go.GetComponent<CharacterBody>() : null;
+                        JoinedParries++;
+                        Parry.MeleeParries++;
+                        UkLink.Send(Proto.Parried + " " + (monster != null ? monster.GetInstanceID() : 0));
                         break;
                     }
                     case Proto.Tp:
@@ -200,10 +218,28 @@ namespace V1Bridge.Ror
                         if (victim == null || victim == body || victim.healthComponent == null || !victim.healthComponent.alive) break;
                         // only what V1 could be fighting: not its own side
                         if (victim.teamComponent != null && body.teamComponent != null && victim.teamComponent.teamIndex == body.teamComponent.teamIndex) break;
+                        // a punch that meets this monster's own hit on that V1 is a parry: the return is dealt there
+                        if (a[5] == "punch" && link.RemoteParry.Punched(victim, body))
+                        {
+                            HostHits++;
+                            LastHostHit = "parry";
+                            break;
+                        }
                         // what one hit of ULTRAKILL's can be worth, whatever the line says
                         float mult = Mathf.Clamp(F(a[2]), 0f, 100f);
                         LastHostHit = Monsters.Hit(body, victim, mult, a[3] == "1", a[4] == "1", a[5], new Vector3(F(a[6]), F(a[7]), F(a[8])));
                         HostHits++;
+                        break;
+                    }
+                    case Proto.Parry:
+                    {
+                        if (link.Remote != msg.conn || a.Length < 3 || (a[1] != "p" && a[1] != "b")) break;
+                        uint id = uint.Parse(a[2]);
+                        var go = id != 0 ? NetworkServer.FindLocalObject(new NetworkInstanceId(id)) : null;
+                        var shot = go != null ? go.GetComponent<RoR2.Projectile.ProjectileController>() : null;
+                        // only what was flying at V1: not its own side's
+                        if (shot != null && shot.teamFilter != null && body.teamComponent != null && shot.teamFilter.teamIndex == body.teamComponent.teamIndex) break;
+                        Parry.Caught(link.RemoteParry, body, a[1], shot);
                         break;
                     }
                 }

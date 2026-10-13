@@ -21,7 +21,7 @@ You need to own **ULTRAKILL** and **Risk of Rain 2** on Steam. Windows only.
 
 Multiplayer, in part: the **host** can play V1 with friends who play ordinary survivors. Every player needs the mod,
 and the same version of it. A **joining** player can play V1 too (new, tested only between two games on one PC):
-moving, shooting, punching, being hurt, healing and dying work; parrying, the Whiplash pulling monsters to V1, blast
+moving, shooting, punching, parrying, being hurt, healing and dying work; the Whiplash pulling monsters to V1, blast
 knockback and coins catching shots do not yet.
 Friends see V1 as a blue winged figure the mod builds and animates itself (it runs, leans and falls; it does not show
 slides, dashes or punches as such), turned the way V1 looks; they do not see V1's shots, coins or explosions. A friend who does not own ULTRAKILL can install the mod too,

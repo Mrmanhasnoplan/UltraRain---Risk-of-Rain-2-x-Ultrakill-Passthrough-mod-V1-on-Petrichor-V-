@@ -173,10 +173,9 @@ namespace V1Bridge.Ror
             if (!UkLanded) return;
             SendInput(user);
             Monsters.Tick(b);
-            // A V1 that joined someone else's game: what it does to the world is the host's to carry out (V1Net). Parrying
-            // is not carried over yet: the projectiles are not listed to ULTRAKILL.
-            if (UnityEngine.Networking.NetworkServer.active) Parry.Tick(b);
-            else V1Net.ClientTick(b, UkHp, UkDead);
+            Parry.Tick(b);
+            // a V1 that joined someone else's game: what it does to the world is the host's to carry out (V1Net)
+            if (!UnityEngine.Networking.NetworkServer.active) V1Net.ClientTick(b, UkHp, UkDead);
             Frames.Update();
             ShowOverlay(user);
             HideBodyParts();

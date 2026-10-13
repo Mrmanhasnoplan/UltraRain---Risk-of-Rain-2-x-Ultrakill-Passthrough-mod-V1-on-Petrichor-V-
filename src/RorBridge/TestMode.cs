@@ -644,6 +644,10 @@ namespace V1Bridge.Ror
                 // switching the AI component off does not stop every monster walking: no speed does
                 spawned.baseMoveSpeed = 0f;
                 spawned.baseAcceleration = 0f;
+                // nor does it stop every monster swinging at what stands in front of it (a Beetle Guard's swing is half
+                // of V1's health, and took the tests' parries and V1's life at random): its own hits do nothing
+                spawned.baseDamage = 0f;
+                spawned.levelDamage = 0f;
                 spawned.MarkAllStatsDirty();
             }
             // what the director gives a monster it spawns
@@ -2559,6 +2563,82 @@ namespace V1Bridge.Ror
             yield return SnapRor("ror2-host-sees-v1");
             MpMark("host-hit-done");
 
+            // 2b. parrying: a monster in punching reach of the joining V1 (harmless but for the hits the test deals for it)
+            Vector3 near = v1.footPosition + Quaternion.Euler(0f, v1.characterDirection != null ? v1.characterDirection.yaw : 0f, 0f) * Vector3.forward * 2.5f;
+            if (Physics.Raycast(near + Vector3.up * 30f, Vector3.down, out var nearHit, 100f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore)) near = nearHit.point;
+            var master2 = new MasterSummon { masterPrefab = MasterCatalog.FindMasterPrefab("BeetleGuardMaster"), position = near + Vector3.up * 0.5f, rotation = Quaternion.identity, teamIndexOverride = TeamIndex.Monster, ignoreTeamMemberLimit = true }.Perform();
+            var guard2 = master2 != null ? master2.GetBody() : null;
+            if (Check("spawned a Beetle Guard in punching reach of the joining V1", guard2 != null))
+            {
+                testMasters.Add(master2);
+                foreach (var ai in master2.GetComponents<RoR2.CharacterAI.BaseAI>()) ai.enabled = false;
+                guard2.baseMoveSpeed = 0f;
+                guard2.baseAcceleration = 0f;
+                guard2.baseDamage = 0f;
+                guard2.levelDamage = 0f;
+                guard2.baseMaxHealth = 100000f;
+                guard2.MarkAllStatsDirty();
+                yield return new WaitForSecondsRealtime(2f);
+                guard2.healthComponent.Networkhealth = guard2.healthComponent.fullHealth;
+                float unit = Monsters.UnitDamage(v1);
+                MpMark("punch-target-up");
+                // melee, parried: the joining V1's punch arrives, and the monster's hit on it comes right behind
+                int parries0 = Parry.MeleeParries;
+                hurts0 = V1HealthLink.HurtsSent;
+                hp0 = link.RemoteHp;
+                float g2 = 0f;
+                t = Now;
+                while (Parry.MeleeParries == parries0 && Now - t < 25f)
+                {
+                    int seen = V1Net.HostHits;
+                    float t1 = Now;
+                    while (V1Net.HostHits == seen && Now - t1 < 5f) yield return null;
+                    if (V1Net.HostHits == seen || !V1Net.LastHostHit.Contains("punch")) continue;
+                    g2 = guard2.healthComponent.combinedHealth;
+                    v1.healthComponent.TakeDamage(new DamageInfo { attacker = guard2.gameObject, inflictor = guard2.gameObject, damage = v1.healthComponent.fullHealth * 0.25f, position = v1.corePosition });
+                    yield return new WaitForSecondsRealtime(0.8f);
+                }
+                metrics["melee_parry"] = (Parry.MeleeParries - parries0) + " parries, " + (V1HealthLink.HurtsSent - hurts0) + " HURT sent, the joining V1's HP " + hp0 + " -> " + link.RemoteHp + ", the monster lost " + F(g2 - guard2.healthComponent.combinedHealth) + " (a return is " + F(Parry.ParryUnits * unit) + ")";
+                Check("the joining V1's punch meeting a monster's hit is a parry", Parry.MeleeParries > parries0, metrics["melee_parry"]);
+                Check("the parried hit never reached it", V1HealthLink.HurtsSent == hurts0 && link.RemoteHp >= hp0, metrics["melee_parry"]);
+                Check("the monster took the return", g2 - guard2.healthComponent.combinedHealth >= Parry.ParryUnits * unit * 0.9f, metrics["melee_parry"]);
+                MpMark("parry-done");
+
+                // melee, not parried: held for the window, then it lands
+                yield return new WaitForSecondsRealtime(2.5f);
+                hurts0 = V1HealthLink.HurtsSent;
+                hp0 = link.RemoteHp;
+                v1.healthComponent.TakeDamage(new DamageInfo { attacker = guard2.gameObject, inflictor = guard2.gameObject, damage = v1.healthComponent.fullHealth * 0.1f, position = v1.corePosition });
+                Check("an unparried melee hit on the joining V1 is held for the parry window", V1HealthLink.HurtsSent == hurts0);
+                t = Now;
+                while (link.RemoteHp == hp0 && Now - t < 3f) yield return null;
+                metrics["melee_unparried"] = "HP " + hp0 + " -> " + link.RemoteHp + " after " + F(Now - t) + " s";
+                Check("then lands", V1HealthLink.HurtsSent > hurts0 && link.RemoteHp < hp0, metrics["melee_unparried"]);
+
+                // a projectile: the joining game lists it to its ULTRAKILL, and a catch there removes it here
+                var fireball = LegacyResourcesAPI.Load<GameObject>("Prefabs/Projectiles/Fireball");
+                if (Check("fireball prefab found", fireball != null))
+                {
+                    yield return new WaitForSecondsRealtime(1f);
+                    int caught0 = Parry.ShotParries;
+                    hurts0 = V1HealthLink.HurtsSent;
+                    g2 = guard2.healthComponent.combinedHealth;
+                    Vector3 target = v1.corePosition, from = target + (guard2.corePosition - target).normalized * 30f + Vector3.up * 2f;
+                    RoR2.Projectile.ProjectileManager.instance.FireProjectile(fireball, from, Quaternion.LookRotation(target - from), guard2.gameObject, 10f, 0f, false, DamageColorIndex.Default, null, 6f);
+                    MpMark("fireball-up");
+                    t = Now;
+                    while (Parry.ShotParries == caught0 && Now - t < 8f) yield return null;
+                    yield return new WaitForSecondsRealtime(0.6f);
+                    int flying = 0;
+                    foreach (var p in InstanceTracker.GetInstancesList<RoR2.Projectile.ProjectileController>()) if (p != null) flying++;
+                    metrics["projectile_catch"] = (Parry.ShotParries - caught0) + " caught after " + F(Now - t) + " s, " + flying + " still flying, " + (V1HealthLink.HurtsSent - hurts0) + " HURT sent, its owner lost " + F(g2 - guard2.healthComponent.combinedHealth);
+                    Check("a catch by the joining V1's ULTRAKILL removed the fireball in the host's game", Parry.ShotParries > caught0 && flying == 0, metrics["projectile_catch"]);
+                    Check("it never hit V1, and its owner took the return", V1HealthLink.HurtsSent == hurts0 && g2 - guard2.healthComponent.combinedHealth >= Parry.ParryUnits * unit * 0.9f, metrics["projectile_catch"]);
+                }
+                if (guard2 != null && guard2.healthComponent.alive) guard2.healthComponent.Suicide();
+            }
+            MpMark("parry-all-done");
+
             // 3. it moves: its body in the host's game goes with it
             yield return MpWait("join-walked", 30f, "the joining V1 walked");
             yield return new WaitForSecondsRealtime(1f);
@@ -2654,6 +2734,48 @@ namespace V1Bridge.Ror
             yield return new WaitForSecondsRealtime(0.5f);
             metrics["hp_after_the_hosts_hit_and_heal"] = hpBefore + " -> " + V1Drive.UkHp;
             Check("the host's hit and heal reached V1's ULTRAKILL health", V1Drive.UkHp < hpBefore - 10 && V1Drive.UkHp > hpBefore - 30, metrics["hp_after_the_hosts_hit_and_heal"]);
+
+            // 2b. parrying. The Feedbacker: ULTRAKILL remembers the arm last used, and the Knuckleblaster does not parry
+            yield return MpWait("punch-target-up", 40f, "the host put a monster in punching reach");
+            UkLink.Send("TESTARM 0");
+            yield return new WaitForSecondsRealtime(1.5f);
+            CharacterBody guard2 = null;
+            foreach (var b in CharacterBody.readOnlyInstancesList) if (b != null && b != v1 && b.teamComponent != null && b.teamComponent.teamIndex == TeamIndex.Monster && b.healthComponent != null && b.healthComponent.alive) guard2 = b;
+            if (Check("the joining game has that monster too", guard2 != null))
+            {
+                int told0 = V1Net.JoinedParries;
+                float t2 = Now;
+                while (!File.Exists(MpFile("parry-done")) && Now - t2 < 40f)
+                {
+                    yield return AimAt(() => guard2 != null ? guard2.corePosition : Vector3.zero);
+                    yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.F } }, 0.25f);
+                    yield return new WaitForSecondsRealtime(0.7f);
+                }
+                yield return new WaitForSecondsRealtime(0.5f);
+                yield return UkState();
+                metrics["parries"] = (V1Net.JoinedParries - told0) + " told by the host; ULTRAKILL counts " + (StateValue(stateReply, "parries") ?? "?");
+                Check("the host told V1's ULTRAKILL of the parry, and it played one", V1Net.JoinedParries > told0 && (StateValue(stateReply, "parries") ?? "0") != "0", metrics["parries"]);
+            }
+            // the fireball: listed to ULTRAKILL here; then the catch, said to the host as ULTRAKILL's fist would have it said
+            yield return MpWait("fireball-up", 40f, "the host fired a fireball at V1");
+            float t3 = Now;
+            int listed = 0, ukShots = 0, shotId = 0;
+            while (Now - t3 < 4f && shotId == 0)
+            {
+                listed = Mathf.Max(listed, Parry.ShotsListed);
+                shotId = Parry.AnyShot();
+                yield return null;
+            }
+            yield return new WaitForSecondsRealtime(0.25f);
+            yield return UkState();
+            int.TryParse(StateValue(stateReply, "shots"), out ukShots);
+            metrics["fireball"] = Mathf.Max(listed, Parry.ShotsListed) + " listed here, ULTRAKILL had " + ukShots;
+            Check("the fireball flies through the joining V1's ULTRAKILL too", shotId != 0 && ukShots >= 1, metrics["fireball"]);
+            int hpAtCatch = V1Drive.UkHp;
+            if (shotId != 0) Parry.OnMessage(Proto.Parry, "p " + shotId + " 0 0 1");
+            yield return MpWait("parry-all-done", 20f, "the host finished with the parries");
+            yield return new WaitForSecondsRealtime(0.5f);
+            Check("the caught fireball did not hurt V1", V1Drive.UkHp >= hpAtCatch, "ULTRAKILL HP " + hpAtCatch + " -> " + V1Drive.UkHp);
 
             // 3. a walk
             Vector3 p0 = V1Drive.ToRor(V1Drive.Latest.feet);

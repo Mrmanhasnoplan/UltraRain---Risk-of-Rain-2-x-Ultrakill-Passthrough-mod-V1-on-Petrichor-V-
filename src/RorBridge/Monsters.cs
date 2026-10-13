@@ -339,7 +339,25 @@ namespace V1Bridge.Ror
         /// <summary>Health components of the V1s joining players are driving, for the patches that have only that to go by.</summary>
         public static readonly Dictionary<HealthComponent, V1HealthLink> Remotes = new Dictionary<HealthComponent, V1HealthLink>();
 
-        void Awake() => hc = GetComponent<HealthComponent>();
+        /// <summary>That V1's hits waiting on a parry: longer windows than the host's own V1 gets, for the trip between the two games.</summary>
+        internal ParryState RemoteParry { get; private set; }
+
+        void Awake()
+        {
+            hc = GetComponent<HealthComponent>();
+            RemoteParry = new ParryState(
+                share =>
+                {
+                    HurtsSent++;
+                    V1Net.ToClient(Remote, Proto.Hurt + " " + share.ToString("0.##", CultureInfo.InvariantCulture));
+                },
+                attacker =>
+                {
+                    var id = attacker != null ? attacker.GetComponent<UnityEngine.Networking.NetworkIdentity>() : null;
+                    if (id != null) V1Net.ToClient(Remote, Proto.Parried + " " + id.netId.Value);
+                },
+                Parry.JoinedSlack);
+        }
 
         void OnDestroy()
         {
@@ -355,6 +373,7 @@ namespace V1Bridge.Ror
             {
                 Remotes[hc] = this;
                 remoteMirror.Reset();
+                RemoteParry.Reset();
                 RemoteDead = false;
             }
             else Remotes.Remove(hc);
@@ -379,6 +398,7 @@ namespace V1Bridge.Ror
                 finally { remoteDying = false; }
                 return;
             }
+            RemoteParry.Flush();
             remoteMirror.Apply(hc, RemoteHp, line => V1Net.ToClient(Remote, line));
         }
 
@@ -409,9 +429,12 @@ namespace V1Bridge.Ror
             LastHurt = lost / Pool(hc) * 100f * Plugin.IncomingDamage.Value;
             if (Remote != null)
             {
-                // a joining player's V1: their ULTRAKILL decides (no parry window yet: the hit lands at once)
-                HurtsSent++;
-                V1Net.ToClient(Remote, Proto.Hurt + " " + LastHurt.ToString("0.##", CultureInfo.InvariantCulture));
+                // a joining player's V1: their ULTRAKILL decides, after the same wait for their fist
+                if (incoming == null || !RemoteParry.Hold(incoming, hc.body, LastHurt))
+                {
+                    HurtsSent++;
+                    V1Net.ToClient(Remote, Proto.Hurt + " " + LastHurt.ToString("0.##", CultureInfo.InvariantCulture));
+                }
                 return;
             }
             // a monster's swing waits a moment for V1's fist; everything else lands at once
