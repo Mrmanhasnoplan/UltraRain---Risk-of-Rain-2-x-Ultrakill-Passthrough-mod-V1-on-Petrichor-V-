@@ -99,6 +99,7 @@ namespace V1Bridge.Ror
                 case "moonorbs": body = MoonOrbs(); break;
                 case "lasthp": body = LastHp(); break;
                 case "figure": body = FigureTest(); break;
+                case "fx": body = FxTest(); break;
                 case "mphost": body = MpHost(); break;
                 case "mpjoin": body = MpJoin(); break;
                 default:
@@ -1171,6 +1172,9 @@ namespace V1Bridge.Ror
             Check("the Lemurian was dragged to V1 in Risk of Rain 2", Monsters.PullsApplied > pulls0 && near < 4.5f && near < far - 6f, metrics["light_pull"]);
             Check("V1 stayed where it was", v1Moved < 3f, F(v1Moved) + " m");
             yield return SnapRor("ror2-after-light-pull");
+            // let go of at speed: what became of it
+            yield return new WaitForSecondsRealtime(2.5f);
+            metrics["light_after_release"] = lem == null ? "gone" : (lem.healthComponent.alive ? "alive, " : "DEAD, ") + "health " + F(lem.healthComponent.combinedHealth) + " of " + F(lem.healthComponent.fullCombinedHealth) + ", " + F(Vector3.Distance(lem.corePosition, eye())) + " m from V1";
             if (lem != null && lem.healthComponent.alive) lem.healthComponent.Suicide();
             yield return new WaitForSecondsRealtime(1f);
 
@@ -2442,6 +2446,84 @@ namespace V1Bridge.Ror
             yield return BackToTitle();
         }
 
+        /// <summary>What V1's weapons do is reported by ULTRAKILL as plain facts and drawn from them: a line for a hitscan
+        /// shot, a ball for a blast, a light for each thing in the air. (One game: it is made to ask for the facts
+        /// with nobody else there, and to draw them itself, which the V1 player's game otherwise never does.)</summary>
+        IEnumerator FxTest()
+        {
+            V1Drive.Script = () => default;
+            V1Fx.Force = true;
+            V1Fx.ShowOwn = true;
+            yield return V1Run();
+            if (failed) yield break;
+            var v1 = LocalUserManager.GetFirstLocalUser().cachedBody;
+            QuietStage(v1);
+            yield return new WaitForSecondsRealtime(2f);
+            Func<float, float, Vector3> ahead = (metres, up) => V1Drive.ToRor(V1Drive.Latest.eye) + Quaternion.Euler(0f, V1Drive.Latest.yaw, 0f) * Vector3.forward * metres + Vector3.up * up;
+            IEnumerator Until(Func<bool> done, float seconds, string shot)
+            {
+                float t0 = Now;
+                while (!done() && Now - t0 < seconds) yield return null;
+                if (done()) ScreenCapture.CaptureScreenshot(Path.Combine(outDir, shot + ".png"));
+                yield return new WaitForSecondsRealtime(0.6f);
+            }
+
+            // 1. a revolver shot at nothing
+            yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.Alpha1 } });
+            yield return new WaitForSecondsRealtime(1.2f);
+            Vector3 sky = ahead(30f, 4f);
+            yield return AimAt(() => sky);
+            int beams0 = V1Fx.BeamsDrawn;
+            yield return Tap(new V1Drive.Frame { buttons = 1 });
+            yield return Until(() => V1Fx.BeamsDrawn > beams0, 2.5f, "ror2-fx-shot");
+            Check("a revolver shot at nothing is drawn as a line", V1Fx.BeamsDrawn > beams0, (V1Fx.BeamsDrawn - beams0) + " lines, " + V1Fx.LinesFromUk + " facts from ULTRAKILL");
+
+            // 2. a blast on the ground ahead
+            Vector3 spot = ahead(10f, 0f);
+            if (Physics.Raycast(spot + Vector3.up * 20f, Vector3.down, out var ground, 60f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore)) spot = ground.point;
+            yield return AimAt(() => spot);
+            int blasts0 = V1Fx.BlastsDrawn;
+            var at = V1Drive.ToUk(spot + Vector3.up * 0.5f);
+            UkLink.Send("TESTBLAST " + F(at.x) + " " + F(at.y) + " " + F(at.z));
+            yield return Until(() => V1Fx.BlastsDrawn > blasts0, 2.5f, "ror2-fx-blast");
+            Check("an explosion is drawn as a ball of light", V1Fx.BlastsDrawn > blasts0, (V1Fx.BlastsDrawn - blasts0) + " drawn");
+
+            // 3. a coin in the air
+            var coinAt = V1Drive.ToUk(ahead(5f, 0.3f));
+            UkLink.Send(Proto.TestCoin + " " + F(coinAt.x) + " " + F(coinAt.y) + " " + F(coinAt.z));
+            yield return Until(() => V1Fx.KindsSeen.Contains("c"), 2.5f, "ror2-fx-coin");
+            Check("a coin in the air has a light", V1Fx.KindsSeen.Contains("c"), "kinds seen: " + V1Fx.KindsSeen);
+
+            // 4. the Whiplash thrown at nothing: its hook and its line
+            yield return AimAt(() => sky);
+            V1Drive.Script = () => new V1Drive.Frame { keys = new[] { KeyCode.R } };
+            yield return Until(() => V1Fx.KindsSeen.Contains("h"), 2f, "ror2-fx-hook");
+            V1Drive.Script = () => default;
+            Check("the Whiplash's hook has a light and a line", V1Fx.KindsSeen.Contains("h"), "kinds seen: " + V1Fx.KindsSeen);
+            yield return new WaitForSecondsRealtime(1.5f);
+
+            // 5. a rocket (slot 5), flying
+            yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.Alpha5 } });
+            yield return new WaitForSecondsRealtime(1.5f);
+            yield return AimAt(() => sky);
+            yield return Tap(new V1Drive.Frame { buttons = 1 });
+            yield return Until(() => V1Fx.KindsSeen.Contains("g"), 3f, "ror2-fx-rocket");
+            yield return UkState();
+            metrics["weapon_for_the_rocket"] = StateValue(stateReply, "weapon") ?? "?";
+            Check("a rocket in flight has a light", V1Fx.KindsSeen.Contains("g"), "kinds seen: " + V1Fx.KindsSeen + "; weapon " + metrics["weapon_for_the_rocket"]);
+
+            yield return new WaitForSecondsRealtime(2f);
+            yield return UkState();
+            metrics["fx"] = V1Fx.LinesFromUk + " facts from ULTRAKILL (it counts beams/blasts/in the air now: " + (StateValue(stateReply, "fx") ?? "?") + "); drawn: " + V1Fx.BeamsDrawn + " shots, " + V1Fx.BlastsDrawn + " blasts, up to " + V1Fx.MarkersPeak + " lights at once, kinds " + V1Fx.KindsSeen;
+            Check("drawing them raised no problem", V1Fx.Problem == null, V1Fx.Problem ?? "");
+            Check("the run is still going and V1's body is alive", Run.instance != null && !Run.instance.isGameOverServer && v1 != null && v1.healthComponent.alive);
+            V1Fx.Force = V1Fx.ShowOwn = false;
+            // not left for the next test with the rocket launcher out
+            yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.Alpha1 } });
+            yield return new WaitForSecondsRealtime(1.2f);
+            yield return BackToTitle();
+        }
+
         // ------------------------------------------------------------ two games on one PC (tools\Run-MpTest.ps1)
         // mphost hosts as Commando, mpjoin joins it as V1. They keep step through marker files in a folder both are
         // given (--v1bridge-mp). Both are the same Steam user; a real second player was not there.
@@ -2488,6 +2570,12 @@ namespace V1Bridge.Ror
             var user = LocalUserManager.GetFirstLocalUser();
             var me = user.cachedBody;
             QuietStage(me);
+            // how each of the test's monsters dies, for the log
+            GlobalEventManager.onCharacterDeathGlobal += report =>
+            {
+                if (report.victimBody == null) return;
+                Plugin.Log.LogInfo("[test] death: " + report.victimBody.name + " at " + report.victimBody.corePosition + ", by " + (report.attackerBody != null ? report.attackerBody.name : "nobody") + ", " + F(report.damageDealt) + " damage, type " + (report.damageInfo != null ? report.damageInfo.damageType.damageType.ToString() : "?") + ", inflictor " + (report.damageInfo != null && report.damageInfo.inflictor != null ? report.damageInfo.inflictor.name : "none"));
+            };
             CharacterBody v1 = null;
             t = Now;
             while (v1 == null && Now - t < 60f)
@@ -2534,9 +2622,19 @@ namespace V1Bridge.Ror
             yield return new WaitForSecondsRealtime(0.5f);
             metrics["first_hit_from_the_joining_v1"] = V1Net.LastHostHit + "; the Beetle Guard " + F(guardHp0) + " -> " + F(guard != null ? guard.healthComponent.combinedHealth : 0f);
             Check("the joining V1's shot hurt the monster in the host's game", V1Net.HostHits > hits0 && (guard == null || guard.healthComponent.combinedHealth < guardHp0), metrics["first_hit_from_the_joining_v1"]);
-            // until it is dead: the kill is the joining player's
+            // until it is dead: the kill is the joining player's (and a picture of one of its shots as the host is shown it)
             t = Now;
-            while (guard != null && guard.healthComponent.alive && Now - t < 90f) yield return null;
+            int beamsSeen = V1Fx.BeamsDrawn;
+            bool beamSnapped = false;
+            while (guard != null && guard.healthComponent.alive && Now - t < 90f)
+            {
+                if (!beamSnapped && V1Fx.BeamsDrawn > beamsSeen)
+                {
+                    beamSnapped = true;
+                    ScreenCapture.CaptureScreenshot(Path.Combine(outDir, "ror2-host-sees-a-shot.png"));
+                }
+                yield return null;
+            }
             yield return new WaitForSecondsRealtime(1f);
             metrics["kill"] = (V1Net.HostHits - hits0) + " hits; the joining player's gold " + gold0 + " -> " + (guest.master != null ? guest.master.money : 0);
             Check("the joining V1 killed it, and was paid for it", (guard == null || !guard.healthComponent.alive) && guest.master != null && guest.master.money > gold0, metrics["kill"]);
@@ -2679,6 +2777,14 @@ namespace V1Bridge.Ror
 
                 // a blast of the joining V1's ULTRAKILL that hurts nothing still throws it
                 yield return new WaitForSecondsRealtime(2.5f);
+                Check("the dragged monster is alive and still by V1 once it is let go", lem != null && lem.healthComponent.alive && Vector3.Distance(lem.corePosition, v1.corePosition) < 8f, lem == null ? "gone" : (lem.healthComponent.alive ? "alive" : "DEAD") + ", " + F(Vector3.Distance(lem.corePosition, v1.corePosition)) + " m from V1");
+                if (lem == null || !lem.healthComponent.alive)
+                {
+                    metrics["whiplash_note"] = "the dragged Lemurian died after it was let go";
+                    lem = MpMonster("LemurianMaster", 6f);
+                    yield return new WaitForSecondsRealtime(2f);
+                    if (lem != null) lem.healthComponent.Networkhealth = lem.healthComponent.fullHealth;
+                }
                 Vector3 start = lem.corePosition;
                 float lemHp = lem.healthComponent.combinedHealth, top = start.y, along = 0f;
                 int knocks0 = V1Net.HostKnocks;
@@ -2751,6 +2857,9 @@ namespace V1Bridge.Ror
             while (v1 != null && v1.healthComponent.alive && Now - t < 30f) yield return null;
             Check("the joining V1's death in its ULTRAKILL killed its body in the host's game", v1 == null || !v1.healthComponent.alive, "after " + F(Now - t) + " s");
             Check("the host is still in the run", Run.instance != null && me != null && me.healthComponent.alive);
+            // what its weapons did was drawn here all along
+            metrics["v1_fx_drawn_by_the_host"] = V1Fx.BeamsDrawn + " shots, " + V1Fx.BlastsDrawn + " blasts, up to " + V1Fx.MarkersPeak + " things in the air at once (kinds: " + V1Fx.KindsSeen + ")" + (V1Fx.Problem != null ? "; " + V1Fx.Problem : "");
+            Check("the host was shown the joining V1's shots, its blast, its coin and its hook", V1Fx.BeamsDrawn >= 3 && V1Fx.BlastsDrawn >= 1 && V1Fx.KindsSeen.Contains("c") && V1Fx.KindsSeen.Contains("h") && V1Fx.Problem == null, metrics["v1_fx_drawn_by_the_host"]);
             metrics["messages"] = V1Net.SentToJoined + " lines to the joining V1, " + V1Net.HostHits + " hits from it";
             yield return new WaitForSecondsRealtime(2f);
             MpMark("host-done");
@@ -2795,6 +2904,9 @@ namespace V1Bridge.Ror
             yield return new WaitForSecondsRealtime(3f);
             Check("V1 is standing on the stage", V1Drive.Latest.grounded, "feet " + V1Drive.ToRor(V1Drive.Latest.feet) + ", stage " + V1Drive.Stage.objects + " colliders");
             yield return StandingCheck("in the host's game");
+            // the revolver: ULTRAKILL remembers the weapon last out, whatever the test before this one left
+            yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.Alpha1 } });
+            yield return new WaitForSecondsRealtime(1.2f);
             MpMark("join-landed");
 
             // 1. the monster the host put in front of V1
@@ -2902,6 +3014,7 @@ namespace V1Bridge.Ror
                 yield return MpWait("pull-done", 20f, "the host saw the monster dragged to V1");
                 metrics["whiplash_seen_here"] = lem != null ? F(Vector3.Distance(lem.corePosition, v1.corePosition)) + " m from V1 in the joining game" : "gone";
                 yield return MpWait("blast-ready", 30f, "the host is watching for a blast");
+                lem = MpFind() ?? lem;
                 if (lem != null)
                 {
                     var at = V1Drive.ToUk(lem.footPosition + (V1Drive.ToRor(V1Drive.Latest.feet) - lem.footPosition).normalized * 1.5f);
@@ -2948,6 +3061,8 @@ namespace V1Bridge.Ror
             t = Now;
             while (user.cachedBody != null && user.cachedBody.healthComponent.alive && Now - t < 10f) yield return null;
             Check("and its body died in the joining game too (the host's doing)", user.cachedBody == null || !user.cachedBody.healthComponent.alive, "after " + F(Now - t) + " s");
+            metrics["v1_fx"] = V1Fx.LinesFromUk + " facts from ULTRAKILL passed to the host; drawn in V1's own game: " + V1Fx.BeamsDrawn + " shots, " + V1Fx.BlastsDrawn + " blasts";
+            Check("V1's game passed on what its weapons did, and drew none of it itself", V1Fx.LinesFromUk > 3 && V1Fx.BeamsDrawn == 0 && V1Fx.BlastsDrawn == 0, metrics["v1_fx"]);
             metrics["messages"] = V1Net.SentToHost + " lines to the host";
             yield return MpWait("host-done", 30f, "the host finished");
         }

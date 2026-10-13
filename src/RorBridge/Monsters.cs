@@ -209,19 +209,34 @@ namespace V1Bridge.Ror
         /// <summary>The host: the Whiplash is dragging that monster; its feet are there now.</summary>
         public static void Pull(CharacterBody b, Vector3 feet)
         {
-            Vector3 delta = feet + Vector3.up * (Height(b) * 0.5f) - b.corePosition;
+            int id = b.GetInstanceID();
+            Vector3 core = feet + Vector3.up * (Height(b) * 0.5f);
             if (b.characterMotor != null)
             {
+                // Where the motor sits relative to the body's core, measured once a frame: the core only catches up with the
+                // motor when it next simulates, and a joining V1's pulls can arrive several to a frame. (Adding each
+                // one's distance-still-to-go, as this did, overshot by that many times: the monster swung further out
+                // with every frame, left the stage and was killed by its bounds.)
+                if (!pullOffsets.TryGetValue(id, out var offset) || offset.Key != Time.frameCount)
+                {
+                    offset = new KeyValuePair<int, Vector3>(Time.frameCount, b.characterMotor.Motor.TransientPosition - b.corePosition);
+                    pullOffsets[id] = offset;
+                }
                 b.characterMotor.velocity = Vector3.zero;
-                b.characterMotor.Motor.SetPosition(b.characterMotor.Motor.TransientPosition + delta);
+                b.characterMotor.Motor.SetPosition(core + offset.Value);
             }
             else
             {
-                b.transform.position += delta;
+                if (!pullOffsets.TryGetValue(id, out var offset) || offset.Key != Time.frameCount)
+                {
+                    offset = new KeyValuePair<int, Vector3>(Time.frameCount, b.transform.position - b.corePosition);
+                    pullOffsets[id] = offset;
+                }
+                b.transform.position = core + offset.Value;
                 if (b.rigidbody != null) { b.rigidbody.position = b.transform.position; b.rigidbody.velocity = Vector3.zero; }
             }
+            if (pullOffsets.Count > 64) pullOffsets.Clear();
             PullsApplied++;
-            int id = b.GetInstanceID();
             if (!stunnedAt.TryGetValue(id, out float at) || Time.time - at > 0.25f)
             {
                 stunnedAt[id] = Time.time;
@@ -229,6 +244,8 @@ namespace V1Bridge.Ror
                 if (hurt != null && hurt.canBeStunned) hurt.SetStun(0.5f);
             }
         }
+
+        static readonly Dictionary<int, KeyValuePair<int, Vector3>> pullOffsets = new Dictionary<int, KeyValuePair<int, Vector3>>();
 
         public static int KnocksApplied;
         /// <summary>The push of a rocket's blast, as Risk of Rain 2 force: a 100 kg monster leaves at this many m/s; heavier

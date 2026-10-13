@@ -17,7 +17,8 @@ namespace V1Bridge.Ror
     ///   joining V1 -> host:  ENG 0|1 (my bridge has hold of my body), HP hp dead, DMG monster mult head explosion hitter x y z,
     ///                        PARRY p|b projectile (my fist caught it / a beam of mine blew it up; 0: one that had just landed),
     ///                        PULL monster x y z (every frame my Whiplash drags it; unreliable), PULLEND monster vx vy vz,
-    ///                        KNOCK monster dx dy dz strength, COINS id,x,y,z;... (every frame there are any; unreliable)
+    ///                        KNOCK monster dx dy dz strength, COINS id,x,y,z;... (every frame there are any; unreliable),
+    ///                        FX / FXP ... (what my weapons did, for the other players to see: V1Fx; the host passes them on)
     ///   host -> joining V1:  HURT n, HEAL x, CAP hp (as to ULTRAKILL: passed straight on), KILL monster, PARRIED monster, COINHIT coin, TP x y z
     /// Monsters are named by their network ids; positions are Risk of Rain 2's.
     /// Only in the joining player's own game: the oil overlay on a soaked monster (the others do not see it).</summary>
@@ -160,7 +161,7 @@ namespace V1Bridge.Ror
         static void FromHost(NetworkMessage msg)
         {
             string line = msg.ReadMessage<Line>().text ?? "";
-            if (Trace) Plugin.Log.LogInfo("from the host: " + line);
+            if (Trace && !line.StartsWith(Proto.FxList + " ")) Plugin.Log.LogInfo("from the host: " + line);
             try
             {
                 int sp = line.IndexOf(' ');
@@ -193,6 +194,11 @@ namespace V1Bridge.Ror
                         UkLink.Send(Proto.Parried + " " + (monster != null ? monster.GetInstanceID() : 0));
                         break;
                     }
+                    case Proto.Fx:
+                    case Proto.FxList:
+                        // another player's V1 at work
+                        V1Fx.Show(line);
+                        break;
                     case Proto.Tp:
                     {
                         var a = rest.Split(' ');
@@ -206,11 +212,29 @@ namespace V1Bridge.Ror
 
         // ------------------------------------------------------------ the host
 
-        public static void ToClient(NetworkConnection conn, string line)
+        public static void ToClient(NetworkConnection conn, string line, bool reliable = true)
         {
             if (conn == null || !conn.isConnected) return;
-            conn.SendByChannel(ToJoined, new Line { text = line }, QosChannelIndex.defaultReliable.intVal);
+            conn.SendByChannel(ToJoined, new Line { text = line }, (reliable ? QosChannelIndex.defaultReliable : QosChannelIndex.defaultUnreliable).intVal);
             SentToJoined++;
+        }
+
+        /// <summary>The host: a line for every joining game but that one (and not for the host's own, which is this game).</summary>
+        static void Relay(string line, NetworkConnection except, bool reliable)
+        {
+            foreach (var conn in NetworkServer.connections)
+            {
+                if (conn == null || conn == except || Util.ConnectionIsLocal(conn)) continue;
+                ToClient(conn, line, reliable);
+            }
+        }
+
+        /// <summary>What the weapons of this game's V1 just did (V1Fx), for the other players' games to draw: straight to
+        /// them when this game hosts, through the host when it joined.</summary>
+        public static void ShareFx(string line, bool everyFrame)
+        {
+            if (NetworkServer.active) Relay(line, null, !everyFrame);
+            else ToServer(line, !everyFrame);
         }
 
         /// <summary>The V1 body of the player on that connection, if that is what they are playing.</summary>
@@ -228,7 +252,7 @@ namespace V1Bridge.Ror
         static void FromJoined(NetworkMessage msg)
         {
             string line = msg.ReadMessage<Line>().text ?? "";
-            if (Trace && line != lastTraced && !line.StartsWith(Proto.Pull + " ") && !line.StartsWith(Proto.Coins + " ")) Plugin.Log.LogInfo("from a joining V1: " + (lastTraced = line));
+            if (Trace && line != lastTraced && !line.StartsWith(Proto.Pull + " ") && !line.StartsWith(Proto.Coins + " ") && !line.StartsWith(Proto.FxList + " ")) Plugin.Log.LogInfo("from a joining V1: " + (lastTraced = line));
             try
             {
                 var body = BodyOf(msg.conn);
@@ -282,8 +306,16 @@ namespace V1Bridge.Ror
                         if ((v - body.corePosition).sqrMagnitude > 90f * 90f) break;
                         Monsters.Pull(monster, v);
                         HostPulls++;
+                        if (Trace && HostPulls % 8 == 1) Plugin.Log.LogInfo("pull " + HostPulls + ": " + line + " (monster at " + monster.corePosition + ", V1 at " + body.corePosition + ")");
                         break;
                     }
+                    case Proto.Fx:
+                    case Proto.FxList:
+                        // what that V1's weapons did: drawn here, and passed on to the other joining games
+                        if (link.Remote != msg.conn) break;
+                        V1Fx.Show(line);
+                        Relay(line, msg.conn, a[0] == Proto.Fx);
+                        break;
                     case Proto.Coins:
                         if (link.Remote == msg.conn) link.RemoteCoins.Read(line.Length > Proto.Coins.Length + 1 ? line.Substring(Proto.Coins.Length + 1) : "", null);
                         break;

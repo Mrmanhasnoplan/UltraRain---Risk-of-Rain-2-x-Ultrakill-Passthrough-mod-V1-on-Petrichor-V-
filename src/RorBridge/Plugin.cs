@@ -89,6 +89,7 @@ namespace V1Bridge.Ror
             UkLink.OnMessage += Monsters.OnMessage;
             UkLink.OnMessage += Parry.OnMessage;
             UkLink.OnMessage += Coins.OnMessage;
+            UkLink.OnMessage += V1Fx.OnMessage;
             UkLink.OnMessage += V1Model.OnMessage;
             UkLink.Start(Plugin.Port.Value);
             string test = Plugin.Arg(TestMode.ArgName);
