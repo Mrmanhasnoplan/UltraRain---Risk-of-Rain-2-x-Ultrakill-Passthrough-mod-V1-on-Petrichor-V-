@@ -17,12 +17,13 @@ namespace V1Bridge.Ror
     /// saws, pellets, coins, the Whiplash's hook with its line). Meant to be read, not admired; nothing of
     /// ULTRAKILL's art is involved. Never drawn in the V1 player's own game, which has the real thing.
     /// Between games the lines carry the V1 body's network id and Risk of Rain 2 coordinates:
-    ///   FX owner b x1 y1 z1 x2 y2 z2 kind | FX owner e x y z radius | FXP owner id,kind,x,y,z;...</summary>
+    ///   FX owner b x1 y1 z1 x2 y2 z2 kind | FX owner e x y z radius | FX owner p arm | FXP owner id,kind,x,y,z;...
+    /// (p: that V1 threw a punch, and its figure swings its arm: V1FigureMotion.Punch)</summary>
     internal static class V1Fx
     {
         /// <summary>For the tests: ask ULTRAKILL for the facts even with nobody else in the game, and draw them here too.</summary>
         public static bool Force, ShowOwn;
-        public static int LinesFromUk, BeamsDrawn, BlastsDrawn, MarkersPeak;
+        public static int LinesFromUk, BeamsDrawn, BlastsDrawn, MarkersPeak, PunchesShown;
         public static string KindsSeen = "";
         public static string Problem;
         static bool asked;
@@ -65,6 +66,7 @@ namespace V1Bridge.Ror
                     // ULTRAKILL's size is how wide the blast grows, in its units
                     sb.Append("e ").Append(S(at.x)).Append(' ').Append(S(at.y)).Append(' ').Append(S(at.z)).Append(' ').Append(S(Mathf.Clamp(F(a[4]) * 0.5f / V1Drive.K, 1f, 14f)));
                 }
+                else if (a[0] == "p") sb.Append("p ").Append(a.Length > 1 ? a[1] : "0");
                 else return;
             }
             else
@@ -136,7 +138,16 @@ namespace V1Bridge.Ror
                 uint owner = uint.Parse(a[1]);
                 if (a[0] == Proto.FxList) { List(owner, a[2]); return; }
                 if (a[0] != Proto.Fx) return;
-                if (a[2] == "b" && a.Length >= 10)
+                if (a[2] == "p")
+                {
+                    // that V1 threw a punch: its figure does
+                    var go = NetworkServer.active ? NetworkServer.FindLocalObject(new NetworkInstanceId(owner)) : ClientScene.FindLocalObject(new NetworkInstanceId(owner));
+                    var figure = go != null ? V1Figure.On(go.GetComponent<CharacterBody>()) : null;
+                    var motion = figure != null ? figure.GetComponent<V1FigureMotion>() : null;
+                    if (motion != null) motion.Punch(a.Length > 3 && a[3] == "1");
+                    PunchesShown++;
+                }
+                else if (a[2] == "b" && a.Length >= 10)
                 {
                     bool rail = a[9] == "1";
                     Vector3 from = new Vector3(F(a[3]), F(a[4]), F(a[5])), to = new Vector3(F(a[6]), F(a[7]), F(a[8]));

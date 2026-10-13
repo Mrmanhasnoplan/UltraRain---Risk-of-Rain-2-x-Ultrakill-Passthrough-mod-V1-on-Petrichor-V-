@@ -24,7 +24,7 @@ and the same version of it. A **joining** player can play V1 too (new, tested on
 moving, shooting, punching, parrying, the Whiplash, blast knockback, coins catching shots, being hurt, healing and
 dying all go through the host.
 Friends see V1 as a blue winged figure the mod builds and animates itself (it runs, leans and falls; it does not show
-slides, dashes or punches as such), turned the way V1 looks. V1's attacks are drawn for them in a simple form: a line for each shot, a ball of light
+slides or dashes as such; it throws a punch when V1 does), turned the way V1 looks. V1's attacks are drawn for them in a simple form: a line for each shot, a ball of light
 for an explosion, a small light for each rocket, nail, coin or the Whiplash's hook in the air. A friend who does not own ULTRAKILL can install the mod too,
 from a download that has the `prebuilt` folder, to join such a game; playing V1 needs ULTRAKILL. More than one V1 in
 a game has not been tried.

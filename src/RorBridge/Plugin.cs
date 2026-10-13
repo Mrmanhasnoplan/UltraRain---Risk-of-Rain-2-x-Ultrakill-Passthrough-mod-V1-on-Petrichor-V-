@@ -55,6 +55,7 @@ namespace V1Bridge.Ror
             NoBodyEffects.Apply(harmony);
             V1Figure.Apply(harmony);
             V1Net.Hook();
+            ViewAnglesAreV1s.Apply(harmony);
             // what the game asks of mods: keeps modded players out of vanilla matchmaking
             RoR2.RoR2Application.isModded = true;
 

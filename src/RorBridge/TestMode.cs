@@ -2414,6 +2414,16 @@ namespace V1Bridge.Ror
                 Check("standing still, its limbs are still", stood < 0.05f, metrics["figure_motion"]);
                 Check("carried along the ground, its legs swing", maxSwing > 0.5f && maxLegs > 25f, metrics["figure_motion"]);
                 Check("put down, it stops and stands", motion.Swing < 0.05f && motion.Air < 0.05f, metrics["figure_motion"]);
+                // a punch: its left arm goes out
+                var armL = figure.transform.Find("body/armL");
+                motion.Punch(false);
+                yield return new WaitForSecondsRealtime(0.15f);
+                float armOut = armL != null ? Quaternion.Angle(armL.localRotation, Quaternion.identity) : 0f;
+                ScreenCapture.CaptureScreenshot(Path.Combine(outDir, "ror2-v1-punching.png"));
+                yield return new WaitForSecondsRealtime(0.8f);
+                float armBack = armL != null ? Quaternion.Angle(armL.localRotation, Quaternion.identity) : 0f;
+                metrics["figure_punch"] = "left arm " + F(armOut) + " degrees out mid-punch, " + F(armBack) + " after";
+                Check("told of a punch, it throws its left arm out and brings it back", armOut > 50f && armBack < 10f, metrics["figure_punch"]);
             }
             yield return BackToTitle();
             if (failed) yield break;
@@ -2501,6 +2511,28 @@ namespace V1Bridge.Ror
             V1Drive.Script = () => default;
             Check("the Whiplash's hook has a light and a line", V1Fx.KindsSeen.Contains("h"), "kinds seen: " + V1Fx.KindsSeen);
             yield return new WaitForSecondsRealtime(1.5f);
+
+            // 4b. a punch at the air: said to the other players, whose figure of V1 swings its arm
+            UkLink.Send("TESTARM 0");
+            yield return new WaitForSecondsRealtime(1.2f);
+            int punches0 = V1Fx.PunchesShown;
+            for (int attempt = 0; attempt < 3 && V1Fx.PunchesShown == punches0; attempt++)
+            {
+                yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.F } }, 0.2f);
+                yield return Until(() => V1Fx.PunchesShown > punches0, 1.5f, "ror2-fx-punch");
+            }
+            Check("a punch at nothing is passed on", V1Fx.PunchesShown > punches0, (V1Fx.PunchesShown - punches0) + " punches");
+
+            // 4c. where V1 looks is what Risk of Rain 2 is given as this player's view, for whoever watches through it
+            var fxUser = LocalUserManager.GetFirstLocalUser().currentNetworkUser;
+            var angles = fxUser != null ? fxUser.GetComponent<RoR2.Networking.NetworkedViewAngles>() : null;
+            yield return Hold(0.4f, new V1Drive.Frame { dx = 14f, dy = 5f });
+            yield return new WaitForSecondsRealtime(0.4f);
+            yield return null;
+            // (what goes out to the other games: the game's own camera may write over the angles themselves in between)
+            var sent = angles != null ? HarmonyLib.Traverse.Create(angles).Field("networkDesiredViewAngles").GetValue<PitchYawPair>() : default;
+            metrics["view_angles"] = angles == null ? "none" : "sent: pitch " + F(sent.pitch) + ", yaw " + F(sent.yaw) + "; V1 looks: pitch " + F(Mathf.DeltaAngle(0f, V1Drive.Latest.pitch)) + ", yaw " + F(V1Drive.Latest.yaw);
+            Check("the view angles this player sends are V1's", ViewAnglesAreV1s.Problem == null && angles != null && Mathf.Abs(Mathf.DeltaAngle(sent.yaw, V1Drive.Latest.yaw)) < 3f && Mathf.Abs(Mathf.DeltaAngle(sent.pitch, V1Drive.Latest.pitch)) < 3f, metrics["view_angles"] + (ViewAnglesAreV1s.Problem != null ? "; " + ViewAnglesAreV1s.Problem : ""));
 
             // 5. a rocket (slot 5), flying
             yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.Alpha5 } });
@@ -2851,12 +2883,34 @@ namespace V1Bridge.Ror
             metrics["v1_moved_m"] = F(moved);
             Check("its body in the host's game went with it", moved > 3f, F(moved) + " m");
 
+            // 3b. where it looks reaches the host, and a dead host watches through its eyes
+            var angles = guest.GetComponent<RoR2.Networking.NetworkedViewAngles>();
+            MpMark("turn-please");
+            yield return MpWait("join-turned", 30f, "the joining V1 turned");
+            yield return new WaitForSecondsRealtime(0.8f);
+            float said = File.Exists(MpFile("join-turned")) ? float.Parse(File.ReadAllText(MpFile("join-turned")), CultureInfo.InvariantCulture) : 0f;
+            metrics["view_angles_on_the_host"] = angles == null ? "none" : "the joining V1 looks along yaw " + F(said) + "; the host has " + F(angles.viewAngles.yaw);
+            Check("the host is sent where the joining V1 looks", angles != null && Mathf.Abs(Mathf.DeltaAngle(angles.viewAngles.yaw, said)) < 10f, metrics["view_angles_on_the_host"]);
+            Check("the host was shown the joining V1's punches on its figure", V1Fx.PunchesShown >= 1 && figure != null && figure.GetComponent<V1FigureMotion>() != null && figure.GetComponent<V1FigureMotion>().Punches >= 1, V1Fx.PunchesShown + " punches told");
+            me.healthComponent.Suicide();
+            yield return new WaitForSecondsRealtime(5f);
+            var rig = user.cameraRigController;
+            Check("the dead host's camera is on the joining V1", rig != null && rig.targetBody == v1, rig == null ? "no camera" : "watching " + (rig.targetBody != null ? rig.targetBody.name : "nothing"));
+            MpMark("turn-again");
+            yield return MpWait("join-turned-again", 30f, "the joining V1 turned again");
+            yield return new WaitForSecondsRealtime(1.5f);
+            said = File.Exists(MpFile("join-turned-again")) ? float.Parse(File.ReadAllText(MpFile("join-turned-again")), CultureInfo.InvariantCulture) : 0f;
+            float camYaw = rig != null && rig.sceneCam != null ? rig.sceneCam.transform.eulerAngles.y : 0f;
+            metrics["spectating"] = "the joining V1 looks along yaw " + F(said) + "; the dead host's camera looks along " + F(camYaw);
+            Check("the spectating camera looks where the joining V1 looks", Mathf.Abs(Mathf.DeltaAngle(camYaw, said)) < 20f, metrics["spectating"]);
+            yield return SnapRor("ror2-host-spectating-v1");
+
             // 4. its death in ULTRAKILL is its body's death here
             MpMark("host-ready-for-death");
             t = Now;
             while (v1 != null && v1.healthComponent.alive && Now - t < 30f) yield return null;
             Check("the joining V1's death in its ULTRAKILL killed its body in the host's game", v1 == null || !v1.healthComponent.alive, "after " + F(Now - t) + " s");
-            Check("the host is still in the run", Run.instance != null && me != null && me.healthComponent.alive);
+            Check("the host's game is still up", Run.instance != null);
             // what its weapons did was drawn here all along
             metrics["v1_fx_drawn_by_the_host"] = V1Fx.BeamsDrawn + " shots, " + V1Fx.BlastsDrawn + " blasts, up to " + V1Fx.MarkersPeak + " things in the air at once (kinds: " + V1Fx.KindsSeen + ")" + (V1Fx.Problem != null ? "; " + V1Fx.Problem : "");
             Check("the host was shown the joining V1's shots, its blast, its coin and its hook", V1Fx.BeamsDrawn >= 3 && V1Fx.BlastsDrawn >= 1 && V1Fx.KindsSeen.Contains("c") && V1Fx.KindsSeen.Contains("h") && V1Fx.Problem == null, metrics["v1_fx_drawn_by_the_host"]);
@@ -3051,8 +3105,18 @@ namespace V1Bridge.Ror
             yield return SnapUk("uk");
             MpMark("join-walked");
 
+            // 3b. turning, twice, for the host to follow: first alive, then dead and watching through V1
+            yield return MpWait("turn-please", 60f, "the host asked V1 to turn");
+            yield return Hold(0.4f, new V1Drive.Frame { dx = 14f });
+            yield return new WaitForSecondsRealtime(0.4f);
+            MpMark("join-turned", F(V1Drive.Latest.yaw));
+            yield return MpWait("turn-again", 60f, "the host asked V1 to turn again");
+            yield return Hold(0.5f, new V1Drive.Frame { dx = -22f });
+            yield return new WaitForSecondsRealtime(0.4f);
+            MpMark("join-turned-again", F(V1Drive.Latest.yaw));
+
             // 4. death
-            yield return MpWait("host-ready-for-death", 30f, "the host is watching for V1's death");
+            yield return MpWait("host-ready-for-death", 60f, "the host is watching for V1's death");
             yield return WaitVulnerable();
             UkLink.Send(Proto.Hurt + " 999");
             t = Now;

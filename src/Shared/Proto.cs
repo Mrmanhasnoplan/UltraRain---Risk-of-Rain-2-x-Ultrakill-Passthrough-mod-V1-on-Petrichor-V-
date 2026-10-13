@@ -6,7 +6,7 @@ namespace V1Bridge
     {
         public const string Version = "0.1.0";
         /// <summary>Bumped whenever a message or the frame file changes shape; the handshake refuses a mismatch.</summary>
-        public const int Protocol = 12;
+        public const int Protocol = 13;
         /// <summary>Not Ultracraft's 27110, so both can be installed side by side.</summary>
         public const int DefaultPort = 27120;
 
@@ -61,7 +61,7 @@ namespace V1Bridge
         public const string PullEnd = "PULLEND";   // PULLEND <id> <vx> <vy> <vz>: let go, moving like this
         public const string Parry = "PARRY";       // PARRY p <projectile id> <dir xyz>: V1's fist caught that projectile; PARRY b <projectile id>: ULTRAKILL blew it up where it was (a beam that hits projectiles)
         public const string Damage = "DMG";        // DMG <id> <multiplier> <head 0|1> <explosion 0|1> <hitter> <x> <y> <z>: V1 hit that monster
-        public const string Fx = "FX";             // FX b <from xyz> <to xyz> <0 revolver|1 railcannon>: a hitscan shot of V1's; FX e <x> <y> <z> <size>: an explosion of V1's
+        public const string Fx = "FX";             // FX b <from xyz> <to xyz> <0 revolver|1 railcannon>: a hitscan shot of V1's; FX e <x> <y> <z> <size>: an explosion of V1's; FX p <0 Feedbacker|1 Knuckleblaster>: V1 threw a punch
         public const string FxList = "FXP";        // FXP id,kind,x,y,z;...: what of V1's is in the air this frame (g rocket or grenade, n nail, s saw, p pellet, c coin, h the Whiplash's hook); empty: nothing any more
         public const string Landed = "LANDED";     // V1 is switched on (movement, camera, weapons, HUD)
         public const string Pose = "P";            // P <feet xyz> <eye xyz> <yaw> <pitch> <roll> <fov> <vel xyz> <grounded> <sliding>

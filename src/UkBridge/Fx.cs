@@ -13,7 +13,8 @@ namespace V1Bridge.Uk
         bool fxWanted, fxListSent;
         readonly HashSet<int> fxBeams = new HashSet<int>(), fxBlasts = new HashSet<int>();
         readonly StringBuilder fxLine = new StringBuilder(256);
-        public int FxBeams, FxBlasts, FxFlying;
+        public int FxBeams, FxBlasts, FxFlying, FxPunches;
+        bool fxFistReady = true;
         const int MaxFlying = 40;
 
         void SetFx(string rest)
@@ -41,6 +42,17 @@ namespace V1Bridge.Uk
                 FxBeams++;
                 Net.Send(Proto.Fx + " b " + S(a.x) + " " + S(a.y) + " " + S(a.z) + " " + S(b.x) + " " + S(b.y) + " " + S(b.z) + " " + (beam.beamType == BeamType.Railgun ? 1 : 0));
             }
+
+            // a punch: the fist stops being ready the moment it is thrown (0 the Feedbacker, 1 the Knuckleblaster)
+            var fists = MonoSingleton<FistControl>.Instance;
+            var fist = fists != null ? fists.currentPunch : null;
+            bool fistReady = fist == null || fist.ready;
+            if (!fistReady && fxFistReady)
+            {
+                FxPunches++;
+                Net.Send(Proto.Fx + " p " + (fist.type == FistType.Heavy ? 1 : 0));
+            }
+            fxFistReady = fistReady;
 
             // explosions: where, and how big they grow
             foreach (var ex in FindObjectsOfType<Explosion>())

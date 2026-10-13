@@ -343,6 +343,16 @@ namespace V1Bridge.Ror
             UkLink.Send(Proto.Size + " " + w + " " + h + " " + Plugin.UkFps.Value);
         }
 
+        static RoR2.Networking.NetworkedViewAngles viewAngles;
+
+        /// <summary>True: those are the view angles of this game's V1 player, and this is where V1 looks.</summary>
+        public static bool OwnViewAngles(RoR2.Networking.NetworkedViewAngles n, out PitchYawPair look)
+        {
+            look = default;
+            if (!engaged || !UkLanded || !HavePose || n == null || n != viewAngles) return false;
+            look = new PitchYawPair(Mathf.DeltaAngle(0f, Latest.pitch), Latest.yaw);
+            return true;
+        }
         public static int RorTeleports;
         static Vector3 holdAt;
         static float holdUntil = -1f;
@@ -506,6 +516,12 @@ namespace V1Bridge.Ror
                 else mirror.Apply(hc, UkHp, UkLink.Send);
             }
             if (body.inputBank != null) body.inputBank.aimDirection = Quaternion.Euler(Latest.pitch, Latest.yaw, 0f) * Vector3.forward;
+            // whose view angles are V1's to fill (ViewAnglesAreV1s): they are kept on the player's network user
+            var netUser = quiet != null ? quiet.networkUser : null;
+            if (netUser != null)
+            {
+                if (viewAngles == null || viewAngles.gameObject != netUser.gameObject) viewAngles = netUser.GetComponent<RoR2.Networking.NetworkedViewAngles>();
+            }
         }
 
         // ------------------------------------------------------------ health and shield
@@ -571,6 +587,34 @@ namespace V1Bridge.Ror
             if (b == null) return;
             // a joining player's V1: its own game moves it, and has to be told
             if (!V1Net.ServerTeleported(b, bodyArgs.targetPosition)) V1Drive.OnRorTeleport(b, bodyArgs.targetPosition);
+        }
+    }
+
+    /// <summary>Where V1 looks is what Risk of Rain 2 sends as this player's view (a dead player watching V1 looks along
+    /// it). The game fills a player's view angles from their own camera, which for the V1 player is not what they
+    /// look with, and does so at a moment of its own choosing: so they are set right where it reads them to send.</summary>
+    static class ViewAnglesAreV1s
+    {
+        public static string Problem;
+
+        public static void Apply(HarmonyLib.Harmony h)
+        {
+            try
+            {
+                foreach (string name in new[] { "Update", "FixedUpdate" })
+                {
+                    var m = HarmonyLib.AccessTools.Method(typeof(RoR2.Networking.NetworkedViewAngles), name);
+                    if (m == null) { Problem = "NetworkedViewAngles." + name + " not found"; continue; }
+                    h.Patch(m, prefix: new HarmonyLib.HarmonyMethod(typeof(ViewAnglesAreV1s), nameof(Before)));
+                }
+            }
+            catch (Exception e) { Problem = e.Message; }
+            if (Problem != null) Plugin.Log.LogError("V1's view for spectators: " + Problem);
+        }
+
+        static void Before(RoR2.Networking.NetworkedViewAngles __instance)
+        {
+            if (V1Drive.OwnViewAngles(__instance, out var look)) __instance.viewAngles = look;
         }
     }
 

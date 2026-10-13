@@ -136,6 +136,18 @@ namespace V1Bridge.Ror
 
         void OnEnable() => have = false;
 
+        float punchAt = -10f;
+        bool punchHeavy;
+        public int Punches;
+
+        /// <summary>V1 threw a punch (V1Fx): the left arm goes out and comes back, the shoulder behind it.</summary>
+        public void Punch(bool heavy)
+        {
+            punchAt = Time.time;
+            punchHeavy = heavy;
+            Punches++;
+        }
+
         void LateUpdate()
         {
             float dt = Time.deltaTime;
@@ -168,6 +180,18 @@ namespace V1Bridge.Ror
                 if (knee[k] != null) knee[k].localRotation = Quaternion.Euler(Mathf.Max(0f, cos * turn) * reach * 1.3f * ground + 40f * air, 0f, 0f);
                 if (arm[k] != null) arm[k].localRotation = Quaternion.Euler(sin * turn * reach * 0.8f * ground, 0f, side * 30f * air);
                 if (elbow[k] != null) elbow[k].localRotation = Quaternion.Euler(-(12f + 28f * swing) * ground - 20f * air, 0f, 0f);
+                // a punch, on the left arm, over whatever else it was doing
+                if (k == 0)
+                {
+                    float thrown = (Time.time - punchAt) / (punchHeavy ? 0.45f : 0.3f);
+                    if (thrown >= 0f && thrown < 1f)
+                    {
+                        float out_ = Mathf.Sin(thrown * Mathf.PI);
+                        if (arm[k] != null) arm[k].localRotation = Quaternion.Slerp(arm[k].localRotation, Quaternion.Euler(-95f, 0f, 0f), out_);
+                        if (elbow[k] != null) elbow[k].localRotation = Quaternion.Slerp(elbow[k].localRotation, Quaternion.Euler(-4f, 0f, 0f), out_);
+                        body.localRotation = body.localRotation * Quaternion.Euler(0f, (punchHeavy ? 30f : 20f) * out_, 0f);
+                    }
+                }
                 // the wings: swept back in a run, spread in the air, never quite still
                 float spread = 6f * swing + 14f * air + Mathf.Sin(clock * 1.6f) * 2.5f;
                 for (int i = 0; i < 4; i++)
