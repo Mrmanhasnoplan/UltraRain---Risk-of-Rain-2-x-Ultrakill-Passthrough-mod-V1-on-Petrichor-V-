@@ -2639,6 +2639,105 @@ namespace V1Bridge.Ror
             }
             MpMark("parry-all-done");
 
+            // 2c. what moves a monster, and the coins: all the host's to carry out for a joining V1
+            CharacterBody MpMonster(string masterName, float metres)
+            {
+                Vector3 at = v1.footPosition + Quaternion.Euler(0f, v1.characterDirection != null ? v1.characterDirection.yaw : 0f, 0f) * Vector3.forward * metres;
+                if (Physics.Raycast(at + Vector3.up * 30f, Vector3.down, out var h, 100f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore)) at = h.point;
+                var m = new MasterSummon { masterPrefab = MasterCatalog.FindMasterPrefab(masterName), position = at + Vector3.up * 0.5f, rotation = Quaternion.identity, teamIndexOverride = TeamIndex.Monster, ignoreTeamMemberLimit = true }.Perform();
+                var b = m != null ? m.GetBody() : null;
+                if (b == null) return null;
+                testMasters.Add(m);
+                foreach (var ai in m.GetComponents<RoR2.CharacterAI.BaseAI>()) ai.enabled = false;
+                b.baseMoveSpeed = 0f;
+                b.baseAcceleration = 0f;
+                b.baseDamage = 0f;
+                b.levelDamage = 0f;
+                b.baseMaxHealth = 100000f;
+                b.MarkAllStatsDirty();
+                return b;
+            }
+            yield return new WaitForSecondsRealtime(1.5f);
+            var lem = MpMonster("LemurianMaster", 14f);
+            if (Check("spawned a Lemurian 14 m in front of the joining V1", lem != null))
+            {
+                yield return new WaitForSecondsRealtime(2f);
+                lem.healthComponent.Networkhealth = lem.healthComponent.fullHealth;
+                Check("a Lemurian counts as light", Monsters.Light(lem));
+                float d0 = Vector3.Distance(lem.corePosition, v1.corePosition), nearest = d0;
+                int pulls0 = V1Net.HostPulls;
+                MpMark("pull-target-up");
+                t = Now;
+                while (Now - t < 35f && nearest > 4.5f)
+                {
+                    nearest = Mathf.Min(nearest, Vector3.Distance(lem.corePosition, v1.corePosition));
+                    yield return null;
+                }
+                metrics["whiplash"] = F(d0) + " m -> " + F(nearest) + " m, " + (V1Net.HostPulls - pulls0) + " pull updates from the joining V1";
+                Check("the joining V1's Whiplash dragged the monster to it, in the host's game", V1Net.HostPulls > pulls0 && nearest < 4.5f && nearest < d0 - 6f, metrics["whiplash"]);
+                MpMark("pull-done");
+
+                // a blast of the joining V1's ULTRAKILL that hurts nothing still throws it
+                yield return new WaitForSecondsRealtime(2.5f);
+                Vector3 start = lem.corePosition;
+                float lemHp = lem.healthComponent.combinedHealth, top = start.y, along = 0f;
+                int knocks0 = V1Net.HostKnocks;
+                MpMark("blast-ready");
+                t = Now;
+                while (V1Net.HostKnocks == knocks0 && Now - t < 15f) yield return null;
+                t = Now;
+                while (Now - t < 2.5f && lem != null)
+                {
+                    top = Mathf.Max(top, lem.corePosition.y);
+                    along = Mathf.Max(along, Vector3.Distance(new Vector3(lem.corePosition.x, 0f, lem.corePosition.z), new Vector3(start.x, 0f, start.z)));
+                    yield return null;
+                }
+                metrics["blast"] = (V1Net.HostKnocks - knocks0) + " blasts told to the host; the Lemurian went up " + F(top - start.y) + " m, along " + F(along) + " m, health " + F(lemHp) + " -> " + F(lem.healthComponent.combinedHealth);
+                Check("a blast of the joining V1's threw the monster in the host's game", V1Net.HostKnocks > knocks0 && (top - start.y > 0.5f || along > 1.5f), metrics["blast"]);
+                Check("and did not hurt it", lem.healthComponent.combinedHealth >= lemHp - 0.5f, metrics["blast"]);
+                lem.healthComponent.Suicide();
+            }
+            MpMark("blast-done");
+
+            // a coin of the joining V1's in the way of a monster's hitscan shot
+            yield return new WaitForSecondsRealtime(1.5f);
+            var shooter = MpMonster("BeetleGuardMaster", 16f);
+            if (Check("spawned a Beetle Guard to do the shooting", shooter != null && Coins.Problem == null, Coins.Problem ?? ""))
+            {
+                yield return new WaitForSecondsRealtime(2f);
+                shooter.healthComponent.Networkhealth = shooter.healthComponent.fullHealth;
+                MpMark("shooter-up");
+                yield return MpWait("coin-up", 40f, "the joining V1 hung a coin in the air");
+                yield return new WaitForSecondsRealtime(0.3f);
+                metrics["coins_known_to_the_host"] = link.RemoteCoins.Count.ToString();
+                if (Check("the host knows where the joining V1's coin hangs", link.RemoteCoins.Count >= 1))
+                {
+                    // along the line the joining game gave, through the coin where it hangs now (it drifts)
+                    var d = File.ReadAllText(MpFile("coin-up")).Split(' ');
+                    Vector3 dir = new Vector3(float.Parse(d[0], CultureInfo.InvariantCulture), float.Parse(d[1], CultureInfo.InvariantCulture), float.Parse(d[2], CultureInfo.InvariantCulture)).normalized;
+                    Vector3 coinAt = link.RemoteCoins.coins[0].at, origin = coinAt + dir * 12f;
+                    int taken0 = Coins.Intercepted;
+                    hurts0 = V1HealthLink.HurtsSent;
+                    hits0 = V1Net.HostHits;
+                    hp0 = link.RemoteHp;
+                    float shooterHp = shooter.healthComponent.combinedHealth;
+                    new BulletAttack
+                    {
+                        owner = shooter.gameObject, weapon = shooter.gameObject, origin = origin, aimVector = -dir, damage = v1.maxHealth * 0.2f,
+                        maxDistance = 200f, radius = 0.1f, bulletCount = 1, minSpread = 0f, maxSpread = 0f, procCoefficient = 1f, force = 0f,
+                        falloffModel = BulletAttack.FalloffModel.None, hitMask = LayerIndex.CommonMasks.bullet, stopperMask = LayerIndex.CommonMasks.bullet
+                    }.Fire();
+                    yield return new WaitForSecondsRealtime(0.3f);
+                    Check("the joining V1's coin took the monster's shot", Coins.Intercepted == taken0 + 1 && V1HealthLink.HurtsSent == hurts0, (Coins.Intercepted - taken0) + " taken, " + (V1HealthLink.HurtsSent - hurts0) + " HURT sent");
+                    yield return new WaitForSecondsRealtime(2.5f);
+                    metrics["after_the_coin"] = (V1Net.HostHits - hits0) + " hits came back from the joining V1 (" + V1Net.LastHostHit + "); the shooter " + F(shooterHp) + " -> " + F(shooter.healthComponent.combinedHealth) + "; the joining V1's HP " + hp0 + " -> " + link.RemoteHp;
+                    Check("and sent it on into a monster, through the host", V1Net.HostHits > hits0 && shooter.healthComponent.combinedHealth < shooterHp, metrics["after_the_coin"]);
+                    Check("the joining V1 was not hurt by any of it", link.RemoteHp >= hp0 && V1HealthLink.HurtsSent == hurts0, metrics["after_the_coin"]);
+                }
+                shooter.healthComponent.Suicide();
+            }
+            MpMark("coins-done");
+
             // 3. it moves: its body in the host's game goes with it
             yield return MpWait("join-walked", 30f, "the joining V1 walked");
             yield return new WaitForSecondsRealtime(1f);
@@ -2776,6 +2875,60 @@ namespace V1Bridge.Ror
             yield return MpWait("parry-all-done", 20f, "the host finished with the parries");
             yield return new WaitForSecondsRealtime(0.5f);
             Check("the caught fireball did not hurt V1", V1Drive.UkHp >= hpAtCatch, "ULTRAKILL HP " + hpAtCatch + " -> " + V1Drive.UkHp);
+
+            // 2c. the Whiplash on a light monster, a blast beside it, a coin against a shot
+            CharacterBody MpFind()
+            {
+                CharacterBody found = null;
+                foreach (var b in CharacterBody.readOnlyInstancesList) if (b != null && b != v1 && b.teamComponent != null && b.teamComponent.teamIndex == TeamIndex.Monster && b.healthComponent != null && b.healthComponent.alive) found = b;
+                return found;
+            }
+            yield return MpWait("pull-target-up", 40f, "the host put a light monster 14 m off");
+            yield return new WaitForSecondsRealtime(0.5f);
+            var lem = MpFind();
+            if (Check("the joining game has it too", lem != null))
+            {
+                for (int attempt = 0; attempt < 5 && !File.Exists(MpFile("pull-done")); attempt++)
+                {
+                    yield return AimAt(() => lem != null ? lem.corePosition : Vector3.zero);
+                    V1Drive.Script = () => new V1Drive.Frame { keys = new[] { KeyCode.R } };
+                    yield return new WaitForSecondsRealtime(0.35f);
+                    // the pull starts when the key is let go
+                    V1Drive.Script = () => default;
+                    float tp = Now;
+                    while (Now - tp < 3f && !File.Exists(MpFile("pull-done"))) yield return null;
+                    yield return new WaitForSecondsRealtime(0.8f);
+                }
+                yield return MpWait("pull-done", 20f, "the host saw the monster dragged to V1");
+                metrics["whiplash_seen_here"] = lem != null ? F(Vector3.Distance(lem.corePosition, v1.corePosition)) + " m from V1 in the joining game" : "gone";
+                yield return MpWait("blast-ready", 30f, "the host is watching for a blast");
+                if (lem != null)
+                {
+                    var at = V1Drive.ToUk(lem.footPosition + (V1Drive.ToRor(V1Drive.Latest.feet) - lem.footPosition).normalized * 1.5f);
+                    UkLink.Send("TESTBLAST " + F(at.x) + " " + F(at.y) + " " + F(at.z));
+                }
+            }
+            yield return MpWait("blast-done", 40f, "the host finished with the blast");
+            yield return MpWait("shooter-up", 40f, "the host put up a monster to shoot at V1");
+            yield return new WaitForSecondsRealtime(0.8f);
+            var shooter = MpFind();
+            if (Check("the joining game has the shooter", shooter != null))
+            {
+                Vector3 eye = V1Drive.ToRor(V1Drive.Latest.eye), dir = (shooter.corePosition + Vector3.up * 4f - eye).normalized;
+                var coinAt = V1Drive.ToUk(eye + dir * 6f);
+                UkLink.Send(Proto.TestCoin + " " + F(coinAt.x) + " " + F(coinAt.y) + " " + F(coinAt.z));
+                float tc = Now;
+                while (Coins.Listed == 0 && Now - tc < 3f) yield return null;
+                Check("V1's coin is listed in the joining game", Coins.Listed >= 1);
+                yield return new WaitForSecondsRealtime(0.3f);
+                int hpCoin = V1Drive.UkHp;
+                MpMark("coin-up", F(dir.x) + " " + F(dir.y) + " " + F(dir.z));
+                yield return MpWait("coins-done", 40f, "the host fired at the coin");
+                yield return UkState();
+                metrics["coin"] = "ULTRAKILL counts " + (StateValue(stateReply, "coinhits") ?? "?") + " shots taken by coins; V1's HP " + hpCoin + " -> " + V1Drive.UkHp;
+                Check("the host told V1's ULTRAKILL its coin took a shot", (StateValue(stateReply, "coinhits") ?? "0") != "0" && V1Drive.UkHp >= hpCoin, metrics["coin"]);
+            }
+            else yield return MpWait("coins-done", 60f, "the host finished with the coin");
 
             // 3. a walk
             Vector3 p0 = V1Drive.ToRor(V1Drive.Latest.feet);

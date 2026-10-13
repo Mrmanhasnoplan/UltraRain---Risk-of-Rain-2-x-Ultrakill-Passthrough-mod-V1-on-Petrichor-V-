@@ -87,8 +87,6 @@ namespace V1Bridge.Ror
             byId.Clear();
             heights.Clear();
             float unit = UnitDamage(v1);
-            // only the host can move a monster: for a V1 that joined, every monster is one the Whiplash takes V1 to
-            bool host = UnityEngine.Networking.NetworkServer.active;
             var team = v1.teamComponent != null ? v1.teamComponent.teamIndex : TeamIndex.Player;
             foreach (var b in CharacterBody.readOnlyInstancesList)
             {
@@ -107,7 +105,7 @@ namespace V1Bridge.Ror
                 int id = b.GetInstanceID();
                 byId[id] = b;
                 sb.Append(id).Append(',').Append(S(feet.x)).Append(',').Append(S(feet.y)).Append(',').Append(S(feet.z)).Append(',')
-                  .Append(S(w * V1Drive.K)).Append(',').Append(S(h * V1Drive.K)).Append(',').Append(S(b.healthComponent.combinedHealth / unit)).Append(',').Append(Light(b) && host ? 1 : 0).Append(',').Append(InWater(b.corePosition - Vector3.up * (h * 0.5f), true) ? 1 : 0).Append(';');
+                  .Append(S(w * V1Drive.K)).Append(',').Append(S(h * V1Drive.K)).Append(',').Append(S(b.healthComponent.combinedHealth / unit)).Append(',').Append(Light(b) ? 1 : 0).Append(',').Append(InWater(b.corePosition - Vector3.up * (h * 0.5f), true) ? 1 : 0).Append(';');
                 heights[id] = h;
                 if (Segmented(b)) segmentedNow.Add(b);
             }
@@ -177,20 +175,41 @@ namespace V1Bridge.Ror
             return mass <= LightMass;
         }
 
-        /// <summary>PULL id x y z: the Whiplash has that monster; it goes where ULTRAKILL has dragged its stand-in, helpless.</summary>
+        /// <summary>PULL id x y z: the Whiplash has that monster; it goes where ULTRAKILL has dragged its stand-in, helpless.
+        /// Moving a monster is the host's to do: a V1 that joined someone else's game asks it to (V1Net).</summary>
         static void Pulled(string[] a, bool end)
         {
             if (a.Length < 4 || !byId.TryGetValue(int.Parse(a[0]), out var b) || b == null) return;
             var v = new Vector3(F(a[1]), F(a[2]), F(a[3]));
+            bool host = UnityEngine.Networking.NetworkServer.active;
             if (end)
             {
-                // let go: it keeps the speed it was dragged at
-                if (b.characterMotor != null) b.characterMotor.velocity = v / V1Drive.K;
-                else if (b.rigidbody != null) b.rigidbody.velocity = v / V1Drive.K;
+                if (host) PullEnd(b, v / V1Drive.K);
+                else V1Net.ClientPullEnd(b, v / V1Drive.K);
                 return;
             }
-            heights.TryGetValue(int.Parse(a[0]), out float h);
-            Vector3 delta = V1Drive.ToRor(v) + Vector3.up * (h * 0.5f) - b.corePosition;
+            if (host) Pull(b, V1Drive.ToRor(v));
+            else V1Net.ClientPull(b, V1Drive.ToRor(v));
+        }
+
+        /// <summary>How tall a monster's stand-in is (its capsule, or its radius where it has none), metres.</summary>
+        public static float Height(CharacterBody b)
+        {
+            var cap = b.GetComponent<CapsuleCollider>();
+            return cap != null ? Mathf.Max(cap.height, cap.radius * 2f) : Mathf.Max(b.radius, 0.5f) * 2f;
+        }
+
+        /// <summary>The host: the Whiplash let go of that monster; it keeps the speed it was dragged at (m/s).</summary>
+        public static void PullEnd(CharacterBody b, Vector3 velocity)
+        {
+            if (b.characterMotor != null) b.characterMotor.velocity = velocity;
+            else if (b.rigidbody != null) b.rigidbody.velocity = velocity;
+        }
+
+        /// <summary>The host: the Whiplash is dragging that monster; its feet are there now.</summary>
+        public static void Pull(CharacterBody b, Vector3 feet)
+        {
+            Vector3 delta = feet + Vector3.up * (Height(b) * 0.5f) - b.corePosition;
             if (b.characterMotor != null)
             {
                 b.characterMotor.velocity = Vector3.zero;
@@ -216,17 +235,22 @@ namespace V1Bridge.Ror
         /// ones in proportion less (RoR2 divides force by mass), so a boss barely shifts.</summary>
         public const float KnockSpeed = 16f;
 
-        /// <summary>KNOCK id dx dy dz strength: an ULTRAKILL blast reached that monster. Risk of Rain 2 throws it, with
-        /// its own physics: off the ground, no steering until it lands.</summary>
+        /// <summary>KNOCK id dx dy dz strength: an ULTRAKILL blast reached that monster.</summary>
         static void Knocked(string[] a)
         {
             if (a.Length < 5 || !byId.TryGetValue(int.Parse(a[0]), out var b) || b == null || b.healthComponent == null || !b.healthComponent.alive) return;
             var dir = new Vector3(F(a[1]), F(a[2]), F(a[3]));
-            float strength = Mathf.Clamp(F(a[4]), 0.1f, 3f);
-            b.healthComponent.TakeDamageForce(dir * (KnockSpeed * 100f * strength), true, true);
-            KnocksApplied++;
+            if (UnityEngine.Networking.NetworkServer.active) Knock(b, dir, F(a[4]));
+            else V1Net.ClientKnock(b, dir, F(a[4]));
         }
 
+        /// <summary>The host: Risk of Rain 2 throws that monster, with its own physics: off the ground, no steering until it lands.</summary>
+        public static void Knock(CharacterBody b, Vector3 dir, float strength)
+        {
+            if (b.healthComponent == null || !b.healthComponent.alive) return;
+            b.healthComponent.TakeDamageForce(dir.normalized * (KnockSpeed * 100f * Mathf.Clamp(strength, 0.1f, 3f)), true, true);
+            KnocksApplied++;
+        }
         static readonly Dictionary<int, TemporaryOverlayInstance> oil = new Dictionary<int, TemporaryOverlayInstance>();
         public static int Oiled => oil.Count;
 
@@ -260,10 +284,9 @@ namespace V1Bridge.Ror
         public static void OnMessage(string cmd, string rest)
         {
             if (cmd == Proto.Oiled) { SetOiled(rest.Split(' ')); return; }
-            // throwing and dragging a monster are the host's to do: not carried over yet for a V1 that joined
             bool host = UnityEngine.Networking.NetworkServer.active;
-            if (cmd == Proto.Knock) { if (host) Knocked(rest.Split(' ')); return; }
-            if (cmd == Proto.Pull || cmd == Proto.PullEnd) { if (host) Pulled(rest.Split(' '), cmd == Proto.PullEnd); return; }
+            if (cmd == Proto.Knock) { Knocked(rest.Split(' ')); return; }
+            if (cmd == Proto.Pull || cmd == Proto.PullEnd) { Pulled(rest.Split(' '), cmd == Proto.PullEnd); return; }
             if (cmd != Proto.Damage) return;
             var v1 = V1Drive.Body;
             var a = rest.Split(' ');
@@ -332,6 +355,9 @@ namespace V1Bridge.Ror
         // tells the host its HP; the host tells it what Risk of Rain 2 did to it (V1Net)
         /// <summary>The joining player this body's V1 belongs to, while their bridge has hold of it. Null: nobody's, or the host's own.</summary>
         public UnityEngine.Networking.NetworkConnection Remote { get; private set; }
+        public CharacterBody Body => hc != null ? hc.body : null;
+        /// <summary>That V1's coins in the air, as its game last listed them (Coins).</summary>
+        internal readonly CoinList RemoteCoins = new CoinList();
         public int RemoteHp { get; private set; } = 100;
         public bool RemoteDead { get; private set; }
         bool remoteDying;

@@ -57,7 +57,10 @@ while (-not (Get-Process 'Risk of Rain 2' -ErrorAction SilentlyContinue) -and $s
 $notes = @()
 if (-not (Get-Process 'Risk of Rain 2' -ErrorAction SilentlyContinue)) { $notes += 'the hosting Risk of Rain 2 never started' }
 else {
-    Start-Sleep -Seconds 20
+    # not before the host is in its lobby: two games loading the one profile at once collide on its config file
+    # (the second then starts without the plugin and sits at the menu)
+    while (-not (Test-Path (Join-Path $out 'host-ready')) -and $sw.Elapsed.TotalSeconds -lt 300) { Start-Sleep -Seconds 1 }
+    if (-not (Test-Path (Join-Path $out 'host-ready'))) { $notes += 'the hosting game never reached its lobby' }
     $env:SteamAppId = '632360'
     $env:SteamGameId = '632360'
     Start-Process -FilePath (Join-Path $steam.RorDir 'Risk of Rain 2.exe') -WorkingDirectory $steam.RorDir `

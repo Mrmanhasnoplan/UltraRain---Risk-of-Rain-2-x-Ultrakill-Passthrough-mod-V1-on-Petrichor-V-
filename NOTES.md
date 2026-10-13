@@ -303,8 +303,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   sender must be playing V1, the target must be on another team, the multiplier is clamped). What is the player's
   own game's as before: picture, input, view, stage collision, movement (the body has client authority, so its
   position and `CharacterDirection.yaw` reach the host through RoR2's own transform sync), interact, equipment, ping.
-  NOT carried over yet, and switched off for a joining V1 so nothing half-works: the Whiplash dragging monsters (every monster counts as heavy: V1 goes to
-  it), blast knockback, coins against hitscan. Untested for a joining V1: stage changes, shields, revives, jump pads,
+  (Parrying came in stage 2 and the Whiplash, blasts and coins in stage 3: see below.) Untested for a joining V1: stage changes, shields, revives, jump pads,
   out-of-bounds teleports (the `TP` line), more than one V1 at once, a host who is also V1.
   `UkLink` now looks for UkBridge only once this game has asked for an ULTRAKILL (`UkLink.Wanted`, set by
   `UkLauncher.Launch`): two RoR2 on one PC no longer race for the one listener.
@@ -317,13 +316,24 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   line: if it meets a held melee hit on that V1, or comes just before one, the host cancels the hit, deals the
   return and sends `PARRIED <monster net id>`, on which the joining game's ULTRAKILL plays its parry. So a joining
   V1's melee hits land about 0.35 s after the host works them out (0.2 for the host's own V1).
+- V1 in someone else's game, stage 3 (2026-10-13): what moves a monster, and the coins. The joining game asks the
+  host: `PULL <monster> x y z` every frame its Whiplash drags a light monster (unreliable channel: said again next
+  frame) and `PULLEND <monster> vx vy vz`, `KNOCK <monster> dx dy dz strength` for a blast, all in RoR2 coordinates;
+  the host carries them out with the same `Monsters.Pull` / `PullEnd` / `Knock` its own V1 uses (only on a monster of
+  another team; a pull only on one that counts as light, and only within 90 m of that V1). Coins: the joining game
+  forwards its ULTRAKILL's `COINS` list in RoR2 coordinates every frame there are any (unreliable; once more,
+  reliably, when the last is gone); the host keeps it on that V1's link (`CoinList`, `V1HealthLink.RemoteCoins`) and
+  `Coins.BeforeCast` now tries the host's own V1's coins and then each joining V1's; a shot taken goes back as
+  `COINHIT <coin>`, which the joining game hands to its ULTRAKILL, whose ricoshot then arrives as an ordinary `DMG`.
+  Still only in the joining player's own game: the oil overlay on a soaked monster.
 - Two games on one PC (`tools\Run-MpTest.ps1`, scenarios `mphost` / `mpjoin`): the host is started through Steam, the
   joining game directly from its exe with `SteamAppId` in its environment (Steam starts a game once), both on the
   bridge profile; `connect localhost:7777` joins a `host 1` game. They keep step through marker files. Both are the
   same Steam user, and a host rejects a second connection from an account it has (`ServerAuthManager`), so the
   joining TEST game gives another id (`SecondPlayer` in `TestMode.cs`, patched only in the `mpjoin` scenario). The
   profile remembers the last survivor: both scenarios set it to Commando first, or a remembered V1 starts an
-  ULTRAKILL in the lobby. A test monster with its AI off still swings: the target's damage is set to 0.
+  ULTRAKILL in the lobby. The joining game is started only once the host is in its lobby: two games loading the one
+  profile at the same moment collide on its config file, and the second then runs without the plugin. A test monster with its AI off still swings: the target's damage is set to 0.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -365,6 +375,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-13 | mphost + mpjoin with the Whiplash, blast and coin steps (golemplains) | PASS (1 run: host 48/48, joining V1 47/47, 0 real files changed, 0 exceptions); as regressions whiplash 27/27, blast 22/22, coinshot 25/25 | joining V1: its Whiplash dragged a Lemurian 14.3 m -> 4.1 m from it in the host's game (34 pull updates; 1.4 m from V1 in its own game); a zero-damage blast beside it threw it 7.0 m up and 9.4 m along on the host, unhurt; a TESTCOIN coin was known to the host, a monster's BulletAttack fired through where it hung was taken by it (no HURT), and the ricoshot came back as `revolver` x4 to the head = 57.6 on the shooter, V1 90 -> 90. The shot was aimed through the coin, not at V1: that it would otherwise have hit V1 was not shown in this run. One run before it never joined: the two games collided on the profile's config file (fixed in the runner) |
 | 2026-10-13 | mphost + mpjoin with the parry steps (golemplains) | PASS (1 run: host 37/37, joining V1 37/37, 0 real files changed, 0 exceptions); as regressions sharpshooter 21/21, parry 26/28 twice (see right) | joining V1: a punch on a Beetle Guard followed at once by that monster's 25% hit = 1 parry, no HURT, the monster lost 72 (5 units), ULTRAKILL played the parry and healed 80 -> 100; an unparried 10% melee hit was held, then landed 0.45 s on (100 -> 90); a fireball from 30 m was listed to the joining ULTRAKILL (1 stand-in), and a catch SAID to the host by the test (the same line a real catch sends, not ULTRAKILL's fist) removed it on the host 1.1 s later, no HURT, its owner lost 72. Single-player `parry`: melee parts pass now that test monsters with their AI off do no damage (their own swings took parries and killed V1 at random); the scripted fireball catch failed in both runs (ULTRAKILL counted the catches, they reached RoR2 after the 0.12 s window: the known timing flake, here with ULTRAKILL capped at 60 fps; not shown to be older than this change by a run of the old code) |
 | 2026-10-13 | mphost + mpjoin: V1 joining a game hosted by a Commando, two games on one PC (golemplains) | PASS (1 run of the final version: host 28/28, joining V1 30/30, 0 real files changed, 0 exceptions); afterwards as regressions: maxhealth 29/29, runloop 45/45, whiplash 27/27 | joined over localhost in 1.4 s; V1 landed on the host's stage (142 colliders), feet 4 mm above the ground; the host saw the figure; V1's revolver x1.25 = 15 on the host's Beetle Guard (480 -> 450), killed in 31 hits, the joining player paid (gold 15 -> 21) and its ULTRAKILL told of the kill; a 30% hit on its body by the host = HURT 30, ULTRAKILL HP 100 -> 70, body 91 of 130; a 10% heal = 70 -> 80; V1 walked 12.9 m and its body went with it on the host; HURT 999 in its ULTRAKILL killed its body on the host, the host's run went on. An earlier run failed because the target's own swings (2 x 52.8) killed V1: which is the path working. Same Steam account on both sides (test-only id on the joining side), same PC: a real second player over the internet was NOT there. Not run: see the Decisions entry |
 | 2026-10-13 | figure, with the limb motion (golemplains) | PASS (2 runs, 36/36, 0 real files changed, 0 exceptions) | standing: swing 0; carried along the ground at 6 m/s: swing 0.88, legs up to 73 degrees apart, leaning into the run in the screenshot; put down: swing 0, no falling pose. The falling pose itself and a real player's movement (dashes, slides, jumps) were not run |

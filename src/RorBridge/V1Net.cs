@@ -15,17 +15,19 @@ namespace V1Bridge.Ror
     /// play together). The player's picture, input, view, the stage under V1's feet and V1's movement are their own
     /// game's, as when hosting.
     ///   joining V1 -> host:  ENG 0|1 (my bridge has hold of my body), HP hp dead, DMG monster mult head explosion hitter x y z,
-    ///                        PARRY p|b projectile (my fist caught it / a beam of mine blew it up; 0: one that had just landed)
-    ///   host -> joining V1:  HURT n, HEAL x, CAP hp (as to ULTRAKILL: passed straight on), KILL monster, PARRIED monster, TP x y z
+    ///                        PARRY p|b projectile (my fist caught it / a beam of mine blew it up; 0: one that had just landed),
+    ///                        PULL monster x y z (every frame my Whiplash drags it; unreliable), PULLEND monster vx vy vz,
+    ///                        KNOCK monster dx dy dz strength, COINS id,x,y,z;... (every frame there are any; unreliable)
+    ///   host -> joining V1:  HURT n, HEAL x, CAP hp (as to ULTRAKILL: passed straight on), KILL monster, PARRIED monster, COINHIT coin, TP x y z
     /// Monsters are named by their network ids; positions are Risk of Rain 2's.
-    /// Not carried over yet: the Whiplash dragging monsters, blast knockback, coins against hitscan.</summary>
+    /// Only in the joining player's own game: the oil overlay on a soaked monster (the others do not see it).</summary>
     internal static class V1Net
     {
         const short ToHost = 27121, ToJoined = 27122;
         const string Engaged = "ENG";
         public static string Problem;
         /// <summary>For the tests.</summary>
-        public static int SentToHost, SentToJoined, HostHits, HostHurts, JoinedKills, JoinedParries;
+        public static int SentToHost, SentToJoined, HostHits, HostHurts, HostPulls, HostKnocks, JoinedKills, JoinedParries;
         public static string LastHostHit = "";
         /// <summary>Every line that arrives goes to the log (the tests switch it on).</summary>
         public static bool Trace;
@@ -71,12 +73,43 @@ namespace V1Bridge.Ror
         static bool sentDead;
         static float sentAt;
 
-        static void ToServer(string line)
+        /// <summary>(reliable false: said again every frame anyway, so one that is lost does not matter and none may queue up)</summary>
+        static void ToServer(string line, bool reliable = true)
         {
             var client = NetworkManagerSystem.singleton != null ? NetworkManagerSystem.singleton.client : null;
             if (client == null || client.connection == null || !client.isConnected) return;
-            client.connection.SendByChannel(ToHost, new Line { text = line }, QosChannelIndex.defaultReliable.intVal);
+            client.connection.SendByChannel(ToHost, new Line { text = line }, (reliable ? QosChannelIndex.defaultReliable : QosChannelIndex.defaultUnreliable).intVal);
             SentToHost++;
+        }
+
+        static uint NetId(CharacterBody b)
+        {
+            var id = b != null ? b.GetComponent<NetworkIdentity>() : null;
+            return id != null ? id.netId.Value : 0u;
+        }
+
+        /// <summary>The Whiplash of this game's V1 is dragging that monster: its feet are there now (every frame of the pull).</summary>
+        public static void ClientPull(CharacterBody monster, Vector3 feet)
+        {
+            ToServer(Proto.Pull + " " + NetId(monster) + " " + S(feet.x) + " " + S(feet.y) + " " + S(feet.z), false);
+        }
+
+        /// <summary>It let go: the monster keeps that speed (m/s).</summary>
+        public static void ClientPullEnd(CharacterBody monster, Vector3 velocity)
+        {
+            ToServer(Proto.PullEnd + " " + NetId(monster) + " " + S(velocity.x) + " " + S(velocity.y) + " " + S(velocity.z));
+        }
+
+        /// <summary>A blast of this game's V1 reached that monster.</summary>
+        public static void ClientKnock(CharacterBody monster, Vector3 dir, float strength)
+        {
+            ToServer(Proto.Knock + " " + NetId(monster) + " " + S(dir.x) + " " + S(dir.y) + " " + S(dir.z) + " " + S(strength));
+        }
+
+        /// <summary>Where the coins of this game's V1 hang (a COINS line in Risk of Rain 2's coordinates).</summary>
+        public static void ClientCoins(string line, bool last)
+        {
+            ToServer(line, last);
         }
 
         /// <summary>Every frame ULTRAKILL has hold of this game's V1 and this game is not the host: the host hears that
@@ -137,6 +170,7 @@ namespace V1Bridge.Ror
                     case Proto.Hurt:
                     case Proto.Heal:
                     case Proto.Cap:
+                    case Proto.CoinHit:
                         // as the host's own V1 gets them: ULTRAKILL's to act on
                         if (cmd == Proto.Hurt) V1HealthLink.HurtsSent++;
                         UkLink.Send(line);
@@ -194,7 +228,7 @@ namespace V1Bridge.Ror
         static void FromJoined(NetworkMessage msg)
         {
             string line = msg.ReadMessage<Line>().text ?? "";
-            if (Trace && line != lastTraced) Plugin.Log.LogInfo("from a joining V1: " + (lastTraced = line));
+            if (Trace && line != lastTraced && !line.StartsWith(Proto.Pull + " ") && !line.StartsWith(Proto.Coins + " ")) Plugin.Log.LogInfo("from a joining V1: " + (lastTraced = line));
             try
             {
                 var body = BodyOf(msg.conn);
@@ -231,6 +265,28 @@ namespace V1Bridge.Ror
                         HostHits++;
                         break;
                     }
+                    case Proto.Pull:
+                    case Proto.PullEnd:
+                    case Proto.Knock:
+                    {
+                        if (link.Remote != msg.conn || a.Length < 5) break;
+                        var go = NetworkServer.FindLocalObject(new NetworkInstanceId(uint.Parse(a[1])));
+                        var monster = go != null ? go.GetComponent<CharacterBody>() : null;
+                        if (monster == null || monster == body || monster.healthComponent == null || !monster.healthComponent.alive) break;
+                        if (monster.teamComponent != null && body.teamComponent != null && monster.teamComponent.teamIndex == body.teamComponent.teamIndex) break;
+                        var v = new Vector3(F(a[2]), F(a[3]), F(a[4]));
+                        if (a[0] == Proto.Knock) { if (a.Length > 5) Monsters.Knock(monster, v, F(a[5])); HostKnocks++; break; }
+                        // only what the Whiplash drags, and only about where that V1 is
+                        if (!Monsters.Light(monster)) break;
+                        if (a[0] == Proto.PullEnd) { Monsters.PullEnd(monster, Vector3.ClampMagnitude(v, 80f)); break; }
+                        if ((v - body.corePosition).sqrMagnitude > 90f * 90f) break;
+                        Monsters.Pull(monster, v);
+                        HostPulls++;
+                        break;
+                    }
+                    case Proto.Coins:
+                        if (link.Remote == msg.conn) link.RemoteCoins.Read(line.Length > Proto.Coins.Length + 1 ? line.Substring(Proto.Coins.Length + 1) : "", null);
+                        break;
                     case Proto.Parry:
                     {
                         if (link.Remote != msg.conn || a.Length < 3 || (a[1] != "p" && a[1] != "b")) break;
