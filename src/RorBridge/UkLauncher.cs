@@ -48,19 +48,58 @@ namespace V1Bridge.Ror
             int doorstop = DoorstopVersion(game);
             if (doorstop < 4) return Fail("ULTRAKILL needs Doorstop 4 next to ULTRAKILL.exe (found " + (doorstop == 0 ? "none" : "version " + doorstop) + "): run tools\\Install-UkDoorstop.ps1");
             string switches = "--doorstop-enabled true --doorstop-target-assembly \"" + preloader + "\"";
-            string args = "-applaunch " + AppId + " " + switches + " " + Proto.UkArgActive + " " + Proto.UkArgPort + " " + Plugin.Port.Value
-                          + " " + Proto.UkArgParent + " " + Process.GetCurrentProcess().Id + " -screen-fullscreen 0 -screen-width 1280 -screen-height 720";
+            string gameArgs = switches + " " + Proto.UkArgActive + " " + Proto.UkArgPort + " " + Plugin.Port.Value
+                              + " " + Proto.UkArgParent + " " + Process.GetCurrentProcess().Id + " -screen-fullscreen 0 -screen-width 1280 -screen-height 720";
+            // Straight from its exe, told which Steam app it is, not through "steam -applaunch": Steam's launcher may
+            // stop to ask something first (cloud saves out of step: "Play anyway?"), and a question waiting behind
+            // Risk of Rain 2 means an ULTRAKILL that never comes. The bridge's ULTRAKILL plays on its own copies of the
+            // saves, so there is nothing of Steam's cloud for it to wait on. Through Steam only if that fails.
+            string how;
+            ours = null;
             try
             {
-                Process.Start(new ProcessStartInfo(steam, args) { UseShellExecute = false });
-                Started = true;
-                seenAt = -1f;
-                Plugin.Log.LogInfo("starting ULTRAKILL (Doorstop " + doorstop + "): " + steam + " " + args);
-                return true;
+                var direct = new ProcessStartInfo(Path.Combine(game, "ULTRAKILL.exe"), gameArgs) { UseShellExecute = false, WorkingDirectory = game };
+                // Doorstop marks the process it has loaded into with environment variables of its own, and a child
+                // inherits them: ULTRAKILL's Doorstop then takes itself for already loaded and does nothing, and
+                // ULTRAKILL runs without UkBridge (it did, once, for the 25 s the watchdog allows). They are not
+                // this game's to pass on.
+                var inherited = new List<string>();
+                foreach (System.Collections.DictionaryEntry v in direct.EnvironmentVariables)
+                {
+                    if (((string)v.Key).StartsWith("DOORSTOP", StringComparison.OrdinalIgnoreCase)) inherited.Add((string)v.Key);
+                }
+                foreach (string name in inherited) direct.EnvironmentVariables.Remove(name);
+                Plugin.Log.LogInfo("not handed on to ULTRAKILL: " + (inherited.Count > 0 ? string.Join(", ", inherited.ToArray()) : "no Doorstop variables found"));
+                direct.EnvironmentVariables["SteamAppId"] = AppId;
+                direct.EnvironmentVariables["SteamGameId"] = AppId;
+                ours = Process.Start(direct);
+                how = "directly";
             }
-            catch (Exception e) { return Fail("couldn't start ULTRAKILL: " + e.Message); }
+            catch (Exception e)
+            {
+                Plugin.Log.LogWarning("couldn't start ULTRAKILL from its exe (" + e.Message + "): asking Steam");
+                try
+                {
+                    Process.Start(new ProcessStartInfo(steam, "-applaunch " + AppId + " " + gameArgs) { UseShellExecute = false });
+                    how = "through Steam";
+                }
+                catch (Exception e2) { return Fail("couldn't start ULTRAKILL: " + e2.Message); }
+            }
+            Started = true;
+            seenAt = -1f;
+            startedAt = UnityEngine.Time.realtimeSinceStartup;
+            nextLook = 0f;
+            warned = false;
+            Plugin.Log.LogInfo("starting ULTRAKILL " + how + " (Doorstop " + doorstop + "): " + gameArgs);
+            return true;
         }
 
+        /// <summary>Said in Risk of Rain 2's chat, where the player will see it.</summary>
+        static void Tell(string text)
+        {
+            try { RoR2.Chat.AddMessage("<color=#ffcc33>V1 Bridge:</color> " + text); }
+            catch { }
+        }
         static bool Fail(string why)
         {
             Problem = why;
@@ -87,24 +126,48 @@ namespace V1Bridge.Ror
             catch { }
         }
 
-        static float seenAt = -1f;
+        static Process ours;
+        static float seenAt = -1f, startedAt, nextLook;
+        static bool warned;
         const float PluginGrace = 25f;
 
-        /// <summary>Every frame: an ULTRAKILL we started that hasn't connected soon after its process appeared is running
-        /// without UkBridge (so without the save sandbox). It is closed at once.</summary>
+        static bool Gone(Process p)
+        {
+            try { return p.HasExited; }
+            catch { return true; }
+        }
+
+        /// <summary>An ULTRAKILL we started that hasn't connected soon after its process appeared is running without
+        /// UkBridge (so without the save sandbox): it is closed at once. Looked at once a second, not every frame:
+        /// asking Windows for its processes takes milliseconds, and while ULTRAKILL was not coming (Steam waiting on an
+        /// answer) doing it every frame dragged Risk of Rain 2's frame rate down for as long as that lasted.</summary>
         public static void Tick()
         {
             if (!Started || UkLink.Connected || Problem != null) return;
-            var p = Running();
-            if (p == null) return;
             float now = UnityEngine.Time.realtimeSinceStartup;
+            if (now < nextLook) return;
+            nextLook = now + 1f;
+            // (started from its exe, it is ours to watch; if that one went, a copy Steam started may have taken its place)
+            if (ours != null && Gone(ours)) ours = null;
+            var p = ours ?? Running();
+            if (p == null)
+            {
+                if (!warned && now - startedAt > 40f)
+                {
+                    warned = true;
+                    Plugin.Log.LogWarning("ULTRAKILL has not appeared 40 s after it was started");
+                    Tell("ULTRAKILL has not started. If Steam is waiting on a question (for example about cloud saves), answer it: Play anyway. Then leave and re-enter character select.");
+                }
+                return;
+            }
             if (seenAt < 0f) { seenAt = now; return; }
             if (now - seenAt < PluginGrace) return;
             try { p.Kill(); } catch { }
             Started = false;
+            ours = null;
             Fail("ULTRAKILL started without UkBridge (no connection " + PluginGrace + " s after it appeared): closed it");
+            Tell("ULTRAKILL started without the mod and was closed. Run Install.cmd again, then try once more.");
         }
-
         /// <summary>Major version of the Doorstop proxy next to ULTRAKILL.exe, 0: none.</summary>
         static int DoorstopVersion(string game)
         {

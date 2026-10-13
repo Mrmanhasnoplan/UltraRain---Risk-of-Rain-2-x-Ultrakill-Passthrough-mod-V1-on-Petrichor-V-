@@ -341,6 +341,21 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   for each thing in the air, eased towards where it was last said to be, and a line from V1 to its hook. Never
   drawn in the V1 player's own game. Nothing of ULTRAKILL's art or sound is involved. Not shown: punches, the
   shotgun's muzzle blast as such (its pellets are), fire, the oil on a monster, and there is no sound.
+- ULTRAKILL is started from its exe, not through Steam (2026-10-13; the owner's report: ULTRAKILL did not open, and the
+  frame rate was still poor). `steam.exe -applaunch` goes through Steam's launcher, which stopped on an "Unable to
+  Sync" prompt (cloud saves; Play anyway / Cancel) that sat behind Risk of Rain 2: no ULTRAKILL, and the run began
+  without it. `UkLauncher.Launch` now starts `ULTRAKILL.exe` itself with `SteamAppId`/`SteamGameId` in its environment
+  (through Steam only if that throws). The bridge's ULTRAKILL plays on its own copies of the saves, so it has
+  nothing of Steam's cloud to wait on. It also connects sooner: 5 s to the handshake against 24 s.
+  A child process inherits the environment, and Doorstop leaves its own variables in the process it loaded into
+  (`DOORSTOP_INITIALIZED`, `DOORSTOP_DISABLE`, `DOORSTOP_INVOKE_DLL_PATH`, `DOORSTOP_MANAGED_FOLDER_DIR`,
+  `DOORSTOP_PROCESS_PATH`, `DOORSTOP_DLL_SEARCH_DIRS`, `DOORSTOP_MONO_LIB_PATH`): with those handed on, ULTRAKILL's
+  Doorstop does nothing and ULTRAKILL runs unmodded (see Incidents). Every `DOORSTOP*` variable is removed from the
+  child's environment. When no ULTRAKILL has appeared 40 s after the start, or one is closed by the watchdog, the
+  player is told in RoR2's chat.
+- Waiting for ULTRAKILL cost the frame rate: `UkLauncher.Tick` asked Windows for its processes
+  (`Process.GetProcessesByName`, about 7 ms a call on this PC) every frame until ULTRAKILL connected, which, when it
+  never came, was the whole session. Now once a second, and through the process the launcher itself started.
 - Multiplayer ran terribly (the owner's report after playing it, 2026-10-13), and the cause was the effects for the
   other players: UkBridge found the beams, explosions and projectiles by `FindObjectsOfType`, five kinds, every frame,
   and in ULTRAKILL's Sandbox (stripped, but its objects still there) that took 31.7 ms a frame: ULTRAKILL fell from
@@ -418,6 +433,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-13 | handshake and picture, ULTRAKILL started from its exe (golemplains) | handshake first FAIL 5/6 (ULTRAKILL ran without UkBridge: the inherited Doorstop variables, see Incidents), then PASS 16/16; picture PASS 32/32; 0 watched real files changed in the passing runs, 0 exceptions | handshake 5.0 s after the start (24 s through Steam), guards ok(9), sandboxed saves, quit 0.9 s after QUIT. picture: ULTRAKILL ready 16.8 s after the pick, 640x360 (the owner's setting), 59.7 fps shown, RoR2 60 fps, frame age 38 ms, merge 1.4 ms. Each of these launches of RoR2 through Steam stopped on Steam's "Unable to Sync" prompt, and Play anyway was clicked for it (the owner's instruction). NOT run: a real multiplayer session with this build; the chat message when ULTRAKILL does not come |
 | 2026-10-13 | fx, with the cost of the effects measured (golemplains) | before: ULTRAKILL frame 16.7 ms with the effects off, 37.5 ms with them on and nothing happening (31.7 ms of it the looking-up). After: PASS 26/26, 0 real files changed, 0 exceptions | effects off 16.70 ms / on and idle 16.70 ms (0.0013 ms) / on with the saw launcher held 16.67 ms (0.015 ms, 12 lights at once); hooks ok. Shotgun: pellets listed and drawn (kind p); slot 3 was the Sawblade Launcher: saws (kind s), so nails proper (kind n) were still not exercised. One game on one PC: the frame rate with real players in a real game was not measured, nor the other players' side |
 | 2026-10-13 | punch and spectating: figure, fx, mphost + mpjoin (golemplains) | PASS: figure 37/37, fx 23/23 (final version), two games host 57/57 and joining V1 50/50; 0 real files changed, 0 exceptions | figure: told of a punch, the left arm is 95 degrees out 0.15 s in and back at rest 0.8 s later. fx: a punch at the air is reported and passed on; the view angles this player sends equal V1's pitch and yaw after a turn. Two games: the host was shown the joining V1's punches on its figure; it had the joining V1's yaw exactly (105.1); after the host's own death its camera was on V1 ("Spectating: V1") and looked along V1's yaw exactly after V1 turned (300.1). Two fx runs failed the angles check on the way: first they turned out to be on the network user, not the master; then, in a game that hosts, RoR2's camera wrote over them (sent yaw 241 against V1's 123), which the prefix on the two sending methods fixed (sent pitch -38.8 / yaw 43.0 = V1's exactly). The two-game run above was with the version BEFORE that last fix; it was not repeated with the final one because Steam stopped starting the game for the tests (its log: "failed to update ownership ticket (Access Denied)"). NOT run: a joining player spectating a hosting V1, pitch on the spectating side, the Knuckleblaster's punch |
 | 2026-10-13 | fx (golemplains), and mphost + mpjoin with the effects and the pull fix | fx PASS (2 runs, 21/21); two games PASS (final version: host 50/50, joining V1 48/48); whiplash 27/27 afterwards; 0 real files changed, 0 exceptions throughout | fx, one game made to draw its own V1's effects: a revolver shot at the sky = 1 line, a blast = 2 balls (the stock explosion is two), a coin, the hook and a rocket each got a light (kinds c, h, g); about 220 facts from ULTRAKILL in the run. Two games: the host drew 18 shots, 2 blasts, the coin and the hook of the joining V1, whose own game drew none. With the pull fix the dragged Lemurian ended alive 1.1 m from the joining V1 (before: dead out of bounds in 2 runs of 3); host mode 14.2 m -> 0.03 m, alive. Seen by eye only in the fx screenshots (first person, so lines are foreshortened); the host's camera sat over its drop pod and did not have a shot in frame. NOT run: a third player (the host passing a joining V1's effects on), nails, saws and pellets (the kinds exist in the code only), how it reads in real play. An earlier two-game run had the joining V1 firing rockets because the fx test had left the launcher out: both tests now pick the revolver |
@@ -467,6 +483,13 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   `Preferences\Prefs.json` (still valid JSON, 137 keys; no pre-run copy existed to diff against). No file in `Saves\`
   changed. Since then: Doorstop 4 is required before launching, the 25 s watchdog exists, and `Run-Test.ps1` copies the
   real save folders to `backups\saves\<run>\` before every run.
+
+- 2026-10-13 15:57, a test of starting ULTRAKILL from its exe: ULTRAKILL was started as a child of Risk of Rain 2
+  with RoR2's Doorstop variables in its environment, its own Doorstop did nothing, and it ran **vanilla for 25 s**
+  until the watchdog closed it. It rewrote the real `Preferences\Prefs.json` in that time; compared with the copy
+  `Run-Test.ps1` had taken three minutes earlier the contents are identical (3,645 characters), only the timestamp
+  moved. No file in `Saves\` changed. Since then the launcher strips every `DOORSTOP*` variable from the child's
+  environment (handshake 16/16 and picture 32/32 afterwards, the real file untouched).
 
 ## Known issues
 
