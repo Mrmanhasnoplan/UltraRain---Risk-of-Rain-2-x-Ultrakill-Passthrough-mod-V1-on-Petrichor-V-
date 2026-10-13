@@ -274,8 +274,7 @@ namespace V1Bridge.Ror
                         var go = NetworkServer.FindLocalObject(new NetworkInstanceId(uint.Parse(a[1])));
                         var victim = go != null ? go.GetComponent<CharacterBody>() : null;
                         if (victim == null || victim == body || victim.healthComponent == null || !victim.healthComponent.alive) break;
-                        // only what V1 could be fighting: not its own side
-                        if (victim.teamComponent != null && body.teamComponent != null && victim.teamComponent.teamIndex == body.teamComponent.teamIndex) break;
+                        // (on its own side: Monsters.Hit asks Risk of Rain 2's friendly-fire rule)
                         // a punch that meets this monster's own hit on that V1 is a parry: the return is dealt there
                         if (a[5] == "punch" && link.RemoteParry.Punched(victim, body))
                         {

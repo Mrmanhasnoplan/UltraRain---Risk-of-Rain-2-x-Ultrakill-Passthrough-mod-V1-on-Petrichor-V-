@@ -18,6 +18,9 @@ namespace V1Bridge.Ror
         static readonly Dictionary<int, CharacterBody> byId = new Dictionary<int, CharacterBody>();
         static readonly StringBuilder sb = new StringBuilder(1024);
         public static int Listed, HitsApplied, KillsByV1;
+        /// <summary>Of those listed, how many are other players (for the tests).</summary>
+        public static int AlliesListed, HitsRefused;
+        static int AlliesNow;
         /// <summary>The last hit V1 landed, for the tests.</summary>
         public static string LastHit = "";
         /// <summary>Where the last hit landed, in the stage, and on whom.</summary>
@@ -92,9 +95,14 @@ namespace V1Bridge.Ror
             {
                 if (b == null || b == v1 || b.healthComponent == null || !b.healthComponent.alive || b.teamComponent == null) continue;
                 var t = b.teamComponent.teamIndex;
-                if (t == team) continue;
+                // The other players are there for V1's weapons to meet too: a shot stops at them, a punch lands, the
+                // Whiplash takes V1 to them. What that does to them is Risk of Rain 2's to say (Hit: nothing, unless
+                // friendly fire is on). Not their drones and turrets.
+                bool ally = t == team;
+                if (ally && !b.isPlayerControlled) continue;
                 // bystanders are left alone, all but the Newt: any survivor can pick a fight with him in the Bazaar
                 if ((t == TeamIndex.None || t == TeamIndex.Neutral) && !IsNewt(b)) continue;
+                if (ally) AlliesNow++;
                 float w, h;
                 var cap = b.GetComponent<CapsuleCollider>();
                 if (cap != null) { w = cap.radius * 2f; h = Mathf.Max(cap.height, w); }
@@ -105,11 +113,13 @@ namespace V1Bridge.Ror
                 int id = b.GetInstanceID();
                 byId[id] = b;
                 sb.Append(id).Append(',').Append(S(feet.x)).Append(',').Append(S(feet.y)).Append(',').Append(S(feet.z)).Append(',')
-                  .Append(S(w * V1Drive.K)).Append(',').Append(S(h * V1Drive.K)).Append(',').Append(S(b.healthComponent.combinedHealth / unit)).Append(',').Append(Light(b) ? 1 : 0).Append(',').Append(InWater(b.corePosition - Vector3.up * (h * 0.5f), true) ? 1 : 0).Append(';');
+                  .Append(S(w * V1Drive.K)).Append(',').Append(S(h * V1Drive.K)).Append(',').Append(S(b.healthComponent.combinedHealth / unit)).Append(',').Append(Light(b) && !ally ? 1 : 0).Append(',').Append(InWater(b.corePosition - Vector3.up * (h * 0.5f), true) ? 1 : 0).Append(',').Append(ally ? 1 : 0).Append(';');
                 heights[id] = h;
                 if (Segmented(b)) segmentedNow.Add(b);
             }
             Listed = byId.Count;
+            AlliesListed = AlliesNow;
+            AlliesNow = 0;
             UkLink.Send(sb.ToString());
             foreach (var b in segmentedNow) SendParts(b);
             segmentedNow.Clear();
@@ -265,6 +275,8 @@ namespace V1Bridge.Ror
         public static void Knock(CharacterBody b, Vector3 dir, float strength)
         {
             if (b.healthComponent == null || !b.healthComponent.alive) return;
+            // (a blast of V1's does not throw its own side about: Risk of Rain 2's rule for the hit decides the push too)
+            if (b.isPlayerControlled) return;
             b.healthComponent.TakeDamageForce(dir.normalized * (KnockSpeed * 100f * Mathf.Clamp(strength, 0.1f, 3f)), true, true);
             KnocksApplied++;
         }
@@ -334,6 +346,12 @@ namespace V1Bridge.Ror
         /// <summary>One hit of V1's on a monster, dealt (on the host) as real Risk of Rain 2 damage from that V1's body.</summary>
         public static string Hit(CharacterBody v1, CharacterBody victim, float mult, bool head, bool explosion, string hitter, Vector3 at)
         {
+            // on another player (or anything else of V1's side): only what Risk of Rain 2's friendly-fire rule lets through
+            if (v1.teamComponent != null && !FriendlyFireManager.ShouldDirectHitProceed(victim.healthComponent, v1.teamComponent.teamIndex))
+            {
+                HitsRefused++;
+                return "x" + S(mult) + " " + hitter + ": on its own side, nothing";
+            }
             var info = new DamageInfo
             {
                 attacker = v1.gameObject,

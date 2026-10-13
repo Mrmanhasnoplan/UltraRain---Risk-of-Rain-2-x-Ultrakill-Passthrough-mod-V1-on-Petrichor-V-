@@ -152,6 +152,22 @@ namespace V1Bridge.Uk
         }
 
         public string VolumeInfo = "unset";
+        float volumeAll = 1f, deadSince = -1f;
+
+        /// <summary>ULTRAKILL is heard only while there is a V1 to hear. Its death sequence goes on sounding (the laugh,
+        /// over and over) for as long as V1 stays dead, which in Risk of Rain 2 can be the rest of a run spent
+        /// watching the others; and nothing of it is wanted between runs. A few seconds after V1's death, and whenever
+        /// Risk of Rain 2 is not in a V1 run, it is silent; RESPAWN and the next run bring it back.</summary>
+        void UpdateSound()
+        {
+            if (!levelPrepared) return;
+            var nm = MonoSingleton<NewMovement>.Instance;
+            bool dead = nm != null && nm.dead;
+            if (!dead) deadSince = -1f;
+            else if (deadSince < 0f) deadSince = Time.unscaledTime;
+            float want = idle || (dead && Time.unscaledTime - deadSince > 4f) ? 0f : volumeAll;
+            if (!Mathf.Approximately(AudioListener.volume, want)) AudioListener.volume = want;
+        }
 
         /// <summary>ULTRAKILL's sound, at the player's own volumes. The bridge's save is new, and a new save's intro sets
         /// sound effects and music to zero and fades the mixers out until the player has been through its sound
@@ -178,6 +194,7 @@ namespace V1Bridge.Uk
                 prefs.SetFloat("sfxVolume", sfx);
                 prefs.SetFloat("musicVolume", music);
                 AudioListener.volume = all;
+                volumeAll = all;
                 AudioListener.pause = false;
                 if (mixer != null)
                 {

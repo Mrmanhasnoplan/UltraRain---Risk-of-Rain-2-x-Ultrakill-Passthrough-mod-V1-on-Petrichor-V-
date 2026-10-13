@@ -6,7 +6,7 @@ namespace V1Bridge
     {
         public const string Version = "0.1.0";
         /// <summary>Bumped whenever a message or the frame file changes shape; the handshake refuses a mismatch.</summary>
-        public const int Protocol = 13;
+        public const int Protocol = 14;
         /// <summary>Not Ultracraft's 27110, so both can be installed side by side.</summary>
         public const int DefaultPort = 27120;
 
@@ -32,7 +32,7 @@ namespace V1Bridge
         public const string Geo = "GEO";           // GEO <path>: the stage's colliders (StageGeometry's file), replacing any before -> GEODONE
         public const string GeoClear = "GEOCLR";   // the stage is gone
         public const string Probe = "PROBE";       // PROBE <x> <y> <z> -> PROBED <ground y below that point> <collider> | PROBED none
-        public const string Ents = "ENTS";         // ENTS id,x,y,z,w,h,hp,light,wet;...: every monster alive (feet, width, height, ULTRAKILL damage units left, 1 if the Whiplash pulls it to V1, 1 if it stands in water)
+        public const string Ents = "ENTS";         // ENTS id,x,y,z,w,h,hp,light,wet,ally;...: every monster alive (feet, width, height, ULTRAKILL damage units left, 1 if the Whiplash pulls it to V1, 1 if it stands in water), and every other player (ally 1: to be hit, hooked and stopped by, but no enemy: no blood, no target for coins or aim)
         public const string Parts = "PARTS";       // PARTS <id> cx,cy,cz,sx,sy,sz;...: that monster's own hurt boxes this frame (centre and size); they are what V1 can hit, in place of its one box
         public const string Hurt = "HURT";         // HURT <n>: V1 loses n of ULTRAKILL's 100, if ULTRAKILL agrees (dash invincibility...)
         public const string Heal = "HEAL";         // HEAL <x>: V1 gains x of ULTRAKILL's 100
@@ -62,7 +62,7 @@ namespace V1Bridge
         public const string Parry = "PARRY";       // PARRY p <projectile id> <dir xyz>: V1's fist caught that projectile; PARRY b <projectile id>: ULTRAKILL blew it up where it was (a beam that hits projectiles)
         public const string Damage = "DMG";        // DMG <id> <multiplier> <head 0|1> <explosion 0|1> <hitter> <x> <y> <z>: V1 hit that monster
         public const string Fx = "FX";             // FX b <from xyz> <to xyz> <0 revolver|1 railcannon>: a hitscan shot of V1's; FX e <x> <y> <z> <size>: an explosion of V1's; FX p <0 Feedbacker|1 Knuckleblaster>: V1 threw a punch
-        public const string FxList = "FXP";        // FXP id,kind,x,y,z;...: what of V1's is in the air this frame (g rocket or grenade, n nail, s saw, p pellet, c coin, h the Whiplash's hook); empty: nothing any more
+        public const string FxList = "FXP";        // FXP id,kind,x,y,z;...: what of V1's is in the air this frame (g rocket or grenade, r the rocket V1 rides, n nail, s saw, p pellet, c coin, h the Whiplash's hook, w the chainsaw on its chain, m magnet, d the railcannon's drill, f a monster on fire); empty: nothing any more
         public const string Landed = "LANDED";     // V1 is switched on (movement, camera, weapons, HUD)
         public const string Pose = "P";            // P <feet xyz> <eye xyz> <yaw> <pitch> <roll> <fov> <vel xyz> <grounded> <sliding>
         public const string Hp = "HP";             // HP <hp> <dead 0|1>

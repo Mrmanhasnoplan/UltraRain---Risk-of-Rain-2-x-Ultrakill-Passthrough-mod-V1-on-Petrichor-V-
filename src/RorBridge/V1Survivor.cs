@@ -219,6 +219,8 @@ namespace V1Bridge.Ror
                 var elbow = Joint("elbow" + s, new Vector3(side * 0.385f, 1.17f, 0.01f), arm);
                 Part(PrimitiveType.Capsule, blue, new Vector3(side * 0.4f, 1.01f, 0.04f), new Vector3(0.13f, 0.2f, 0.13f), new Vector3(-10f, 0f, side * 4f), elbow); // forearm
                 Part(PrimitiveType.Sphere, dark, new Vector3(side * 0.41f, 0.79f, 0.08f), new Vector3(0.12f, 0.14f, 0.12f), default, elbow); // hand
+                // the gun in the right hand: a plain block, pointing the way the forearm does when the arm is up (V1FigureMotion)
+                if (side > 0) Part(PrimitiveType.Cube, dark, new Vector3(side * 0.41f, 0.66f, 0.1f), new Vector3(0.06f, 0.26f, 0.1f), default, elbow);
                 var leg = Joint("leg" + s, new Vector3(side * 0.13f, 0.97f, 0f), parent);
                 Part(PrimitiveType.Capsule, dark, new Vector3(side * 0.13f, 0.8f, 0f), new Vector3(0.16f, 0.24f, 0.16f), default, leg); // thigh
                 var knee = Joint("knee" + s, new Vector3(side * 0.13f, 0.57f, 0.01f), leg);

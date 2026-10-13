@@ -37,6 +37,7 @@ namespace V1Bridge.Uk
                 catch (Exception e) { Plugin.Log.LogWarning("handle '" + line + "': " + e); }
             }
             UpdateLevel();
+            UpdateSound();
             UpdateModelExport();
             UpdateOil();
             SendCoins();

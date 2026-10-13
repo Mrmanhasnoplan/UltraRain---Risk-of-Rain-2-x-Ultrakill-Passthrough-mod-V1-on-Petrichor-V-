@@ -25,7 +25,8 @@ moving, shooting, punching, parrying, the Whiplash, blast knockback, coins catch
 dying all go through the host.
 Friends see V1 as a blue winged figure the mod builds and animates itself (it runs, leans and falls; it does not show
 slides or dashes as such; it throws a punch when V1 does), turned the way V1 looks. V1's attacks are drawn for them in a simple form: a line for each shot, a ball of light
-for an explosion, a small light for each rocket, nail, coin or the Whiplash's hook in the air. A friend who does not own ULTRAKILL can install the mod too,
+for an explosion, a small shape for each rocket, nail, saw, coin, magnet, drill or chainsaw, a flame on a burning
+monster. The other players are solid to V1's weapons (a shot stops at them and does nothing, unless friendly fire is on). A friend who does not own ULTRAKILL can install the mod too,
 from a download that has the `prebuilt` folder, to join such a game; playing V1 needs ULTRAKILL. More than one V1 in
 a game has not been tried.
 No game files are in this repository; both plugins are compiled against your own installs.
@@ -66,7 +67,7 @@ that a copy kept in `profiles\ror2\cache` shows at once.
   turning feels too slow or too fast.
 - Risk of Rain 2 keeps **Interact** (chests, shrines, teleporter), **Equipment**, **Ping** (middle mouse by default),
   **Escape** and the scoreboard. Whatever those are bound to is not passed on to ULTRAKILL.
-- Damage: one ULTRAKILL damage unit (a revolver shot) is 300% of V1's RoR2 damage stat, so levels and damage items count.
+- Damage: one ULTRAKILL damage unit (a revolver shot) is 100% of V1's RoR2 damage stat (a setting), so levels and damage items count.
   Kills are Risk of Rain 2's: gold, experience, on-kill items.
 - Health: ULTRAKILL's HP is the truth and RoR2's health follows it. RoR2 works out a hit (armor, shield, barrier) and
   ULTRAKILL takes what got through, unless V1 is invincible (a dash, the moment after a hit). RoR2 healing heals V1.
@@ -91,9 +92,9 @@ In game: **Settings → Mod Options → RorBridge** (or `profiles\ror2\BepInEx\c
 | UltrakillHeight | 720 | Height ULTRAKILL renders at. The biggest performance lever: try 540 or 480 on a weak card. |
 | UltrakillFpsCap | 120 | ULTRAKILL's frame cap. |
 | MouseScale | 2 | Multiplies mouse movement, on top of ULTRAKILL's sensitivity. |
-| DamageCoefficient | 3 | RoR2 damage of one ULTRAKILL damage unit, × V1's damage stat. |
+| DamageCoefficient | 1 | RoR2 damage of one ULTRAKILL damage unit, × V1's damage stat. |
 | IncomingDamage | 1 | Multiplies what RoR2 does to V1. |
-| V1Health | 90 | V1's base health in RoR2 (grows 30% of this per level). V1's real health is ULTRAKILL's 100; a higher number makes each RoR2 hit cost a smaller share of it. |
+| V1Health | 100 | V1's base health in RoR2 (grows 30% of this per level). V1's real health is ULTRAKILL's 100; a higher number makes each RoR2 hit cost a smaller share of it. |
 | HideRoR2HealthAndSkills | on | Hide RoR2's health bar and skill icons under ULTRAKILL's HUD. |
 
 ULTRAKILL's own options (field of view, sensitivity, HUD, graphics) are in `profiles\uk\Preferences`.

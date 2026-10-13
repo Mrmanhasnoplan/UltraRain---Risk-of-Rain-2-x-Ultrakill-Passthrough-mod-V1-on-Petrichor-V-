@@ -75,8 +75,9 @@ namespace V1Bridge.Uk
             }
             blasts.Clear();
 
-            // what is in the air: g rockets and grenades, n nails, s saws, p pellets and other shots of V1's, c coins,
-            // h the Whiplash's hook
+            // what is in the air or stuck in the world: g rockets and grenades (r the one V1 is riding), n nails, s saws,
+            // p pellets and other shots of V1's, c coins, h the Whiplash's hook, w the chainsaw out on its chain,
+            // m magnets, d the railcannon's drill, f a monster on fire
             if (Time.unscaledTime < fxNextList) return;
             fxNextList = Time.unscaledTime + ListInterval;
             fxLine.Length = 0;
@@ -94,7 +95,7 @@ namespace V1Bridge.Uk
             for (int i = grenades.Count - 1; i >= 0; i--)
             {
                 if (grenades[i] == null) { grenades.RemoveAt(i); continue; }
-                if (!grenades[i].enemy) Add(grenades[i], 'g', grenades[i].transform.position);
+                if (!grenades[i].enemy) Add(grenades[i], grenades[i].playerRiding ? 'r' : 'g', grenades[i].transform.position);
             }
             var balls = FxHooks.Cannonballs;
             for (int i = balls.Count - 1; i >= 0; i--)
@@ -119,6 +120,33 @@ namespace V1Bridge.Uk
                 if (nail == null || nail.hit || nail.stopped) { nails.RemoveAt(i); continue; }
                 if (!nail.enemy) Add(nail, nail.sawblade || nail.chainsaw ? 's' : 'n', nail.transform.position);
             }
+            var saws = FxHooks.Chainsaws;
+            for (int i = saws.Count - 1; i >= 0; i--)
+            {
+                if (saws[i] == null) { saws.RemoveAt(i); continue; }
+                if (saws[i].gameObject.activeInHierarchy) Add(saws[i], 'w', saws[i].transform.position);
+            }
+            var magnets = FxHooks.Magnets;
+            for (int i = magnets.Count - 1; i >= 0; i--)
+            {
+                if (magnets[i] == null) { magnets.RemoveAt(i); continue; }
+                if (magnets[i].gameObject.activeInHierarchy) Add(magnets[i], 'm', magnets[i].transform.position);
+            }
+            var drills = FxHooks.Drills;
+            for (int i = drills.Count - 1; i >= 0; i--)
+            {
+                if (drills[i] == null) { drills.RemoveAt(i); continue; }
+                if (drills[i].gameObject.activeInHierarchy) Add(drills[i], 'd', drills[i].transform.position);
+            }
+            // a monster burning (gasoline set alight, or anything else that lit it): one fire each, at its middle
+            foreach (var kv in proxies)
+            {
+                var p = kv.Value;
+                if (p == null || p.eid == null || p.eid.flammables == null || p.center == null) continue;
+                bool burning = false;
+                foreach (var f in p.eid.flammables) if (f != null && f.burning) { burning = true; break; }
+                if (burning) Add(p, 'f', p.center.position);
+            }
             FxFlying = n;
             // while there is anything, and once more when the last is gone
             if (n == 0 && !fxListSent) return;
@@ -137,6 +165,9 @@ namespace V1Bridge.Uk
         public static readonly List<Cannonball> Cannonballs = new List<Cannonball>();
         public static readonly List<Projectile> Projectiles = new List<Projectile>();
         public static readonly List<Nail> Nails = new List<Nail>();
+        public static readonly List<Chainsaw> Chainsaws = new List<Chainsaw>();
+        public static readonly List<Magnet> Magnets = new List<Magnet>();
+        public static readonly List<Harpoon> Drills = new List<Harpoon>();
         public static string Problem;
         const int Most = 600;
 
@@ -148,6 +179,9 @@ namespace V1Bridge.Uk
             Cannonballs.Clear();
             Projectiles.Clear();
             Nails.Clear();
+            Chainsaws.Clear();
+            Magnets.Clear();
+            Drills.Clear();
         }
 
         public static void Apply(Harmony h)
@@ -158,6 +192,9 @@ namespace V1Bridge.Uk
             Hook(h, typeof(Cannonball), nameof(ACannonball));
             Hook(h, typeof(Projectile), nameof(AProjectile));
             Hook(h, typeof(Nail), nameof(ANail));
+            Hook(h, typeof(Chainsaw), nameof(AChainsaw));
+            Hook(h, typeof(Magnet), nameof(AMagnet));
+            Hook(h, typeof(Harpoon), nameof(ADrill));
             if (Problem != null) Plugin.Log.LogError("effects for the other players: " + Problem);
         }
 
@@ -180,5 +217,8 @@ namespace V1Bridge.Uk
         static void ACannonball(Cannonball __instance) { if (On && Cannonballs.Count < Most) Cannonballs.Add(__instance); }
         static void AProjectile(Projectile __instance) { if (On && Projectiles.Count < Most) Projectiles.Add(__instance); }
         static void ANail(Nail __instance) { if (On && Nails.Count < Most) Nails.Add(__instance); }
+        static void AChainsaw(Chainsaw __instance) { if (On && Chainsaws.Count < Most) Chainsaws.Add(__instance); }
+        static void AMagnet(Magnet __instance) { if (On && Magnets.Count < Most) Magnets.Add(__instance); }
+        static void ADrill(Harpoon __instance) { if (On && Drills.Count < Most) Drills.Add(__instance); }
     }
 }

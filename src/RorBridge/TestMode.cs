@@ -1488,6 +1488,22 @@ namespace V1Bridge.Ror
             metrics["uk_audio_firing"] = firing;
             var p = System.Text.RegularExpressions.Regex.Match(firing, @"playing(\d+)");
             Check("firing plays sounds in ULTRAKILL", p.Success && int.Parse(p.Groups[1].Value) > 0, firing);
+            // V1 dead: its death sequence is heard for a moment, and then ULTRAKILL is silent (it laughed on for as long
+            // as V1 stayed dead: the rest of a run spent watching the others)
+            yield return WaitVulnerable();
+            UkLink.Send(Proto.Hurt + " 999");
+            float died = Now;
+            while (!V1Drive.UkDead && Now - died < 8f) yield return null;
+            yield return new WaitForSecondsRealtime(1f);
+            yield return UkState();
+            string justDead = StateValue(stateReply, "audio") ?? "?";
+            yield return new WaitForSecondsRealtime(5.5f);
+            yield return UkState();
+            string longDead = StateValue(stateReply, "audio") ?? "?";
+            metrics["uk_audio_after_death"] = "1 s after: " + justDead + "; 6.5 s after: " + longDead;
+            Check("V1 died", V1Drive.UkDead);
+            Check("its death is heard at first", !justDead.Contains("listener0/"), justDead);
+            Check("and a few seconds on ULTRAKILL is silent", longDead.Contains("listener0/"), longDead);
             yield return BackToTitle();
         }
 
@@ -1947,7 +1963,7 @@ namespace V1Bridge.Ror
             metrics["configured_health"] = F(configured);
             metrics["body"] = "level " + F(v1.level) + ", max health " + F(v1.maxHealth) + ", regen " + F(v1.regen) + " (base " + F(v1.baseRegen) + ", per level " + F(v1.levelRegen) + ")";
             Check("V1's health in Risk of Rain 2 is the configured number at level 1", Mathf.Abs(v1.maxHealth - configured) < 0.5f && Mathf.Abs(v1.level - 1f) < 0.01f, metrics["body"]);
-            Check("the default is 90", Mathf.Abs((float)Plugin.V1Health.DefaultValue - 90f) < 0.01f, Plugin.V1Health.DefaultValue.ToString());
+            Check("the default is 100", Mathf.Abs((float)Plugin.V1Health.DefaultValue - 100f) < 0.01f, Plugin.V1Health.DefaultValue.ToString());
             Check("V1 has no regeneration of its own", Mathf.Abs(v1.regen) < 0.001f, metrics["body"]);
 
             // hurt, then left alone: nothing comes back
@@ -2389,6 +2405,7 @@ namespace V1Bridge.Ror
             if (Check("the figure has its motion", motion != null))
             {
                 float stood = motion.Swing;
+                Vector3 stoodAt = other.transform.position;
                 // across the picture, away from the drop pod, turned the way it goes
                 Vector3 along = -Vector3.Cross(Vector3.up, flat).normalized;
                 if (other.characterDirection != null) other.characterDirection.yaw = Quaternion.LookRotation(along).eulerAngles.y;
@@ -2414,6 +2431,13 @@ namespace V1Bridge.Ror
                 Check("standing still, its limbs are still", stood < 0.05f, metrics["figure_motion"]);
                 Check("carried along the ground, its legs swing", maxSwing > 0.5f && maxLegs > 25f, metrics["figure_motion"]);
                 Check("put down, it stops and stands", motion.Swing < 0.05f && motion.Air < 0.05f, metrics["figure_motion"]);
+                // back to where the camera has it, facing the camera, for the pictures that follow
+                if (other.characterMotor != null) other.characterMotor.Motor.SetPosition(stoodAt);
+                else other.transform.position = stoodAt;
+                if (other.characterDirection != null) other.characterDirection.yaw = facing;
+                yield return new WaitForSecondsRealtime(1.2f);
+                ScreenCapture.CaptureScreenshot(Path.Combine(outDir, "ror2-v1-stance.png"));
+                yield return new WaitForSecondsRealtime(0.3f);
                 // a punch: its left arm goes out
                 var armL = figure.transform.Find("body/armL");
                 motion.Punch(false);
@@ -2423,7 +2447,36 @@ namespace V1Bridge.Ror
                 yield return new WaitForSecondsRealtime(0.8f);
                 float armBack = armL != null ? Quaternion.Angle(armL.localRotation, Quaternion.identity) : 0f;
                 metrics["figure_punch"] = "left arm " + F(armOut) + " degrees out mid-punch, " + F(armBack) + " after";
-                Check("told of a punch, it throws its left arm out and brings it back", armOut > 50f && armBack < 10f, metrics["figure_punch"]);
+                Check("told of a punch, it throws its left arm out and brings it back to its stance", armOut > 50f && armBack < 30f, metrics["figure_punch"]);
+
+                // what a V1's weapons leave in the world, drawn from made-up reports of the kind its ULTRAKILL sends: a saw,
+                // a magnet, the drill, the chainsaw on its chain, a fire, and a rocket that V1 then gets on
+                uint ownerId = other.GetComponent<UnityEngine.Networking.NetworkIdentity>().netId.Value;
+                Vector3 mid = other.corePosition + Vector3.up * 0.4f, across = Vector3.Cross(Vector3.up, flat).normalized;
+                string P(Vector3 at) => F(at.x) + "," + F(at.y) + "," + F(at.z) + ";";
+                string Report(bool riding) => Proto.FxList + " " + ownerId + " "
+                    + "1,s," + P(mid + across * 1.6f) + "2,m," + P(mid + across * 2.4f) + "3,d," + P(mid + across * 3.2f)
+                    + "4,w," + P(mid - across * 1.6f + flat * -1f) + "5,f," + P(mid - across * 2.8f)
+                    + "6," + (riding ? "r" : "g") + "," + P(other.footPosition + (riding ? Vector3.zero : -flat * 2f));
+                float began = Now, rideMost = 0f;
+                bool worldSnapped = false;
+                while (Now - began < 2f)
+                {
+                    V1Fx.Show(Report(Now - began > 0.5f));
+                    rideMost = Mathf.Max(rideMost, motion.Ride);
+                    if (!worldSnapped && Now - began > 1.5f)
+                    {
+                        worldSnapped = true;
+                        ScreenCapture.CaptureScreenshot(Path.Combine(outDir, "ror2-v1-riding-and-effects.png"));
+                    }
+                    yield return new WaitForSecondsRealtime(0.05f);
+                }
+                yield return new WaitForSecondsRealtime(1.5f);
+                metrics["effects_drawn"] = "kinds " + V1Fx.KindsSeen + ", up to " + V1Fx.MarkersPeak + " at once; riding pose up to " + F(rideMost) + ", " + F(motion.Ride) + " once the rocket is gone" + (V1Fx.Problem != null ? "; " + V1Fx.Problem : "");
+                bool allKinds = true;
+                foreach (char kind in "smdwfr") allKinds &= V1Fx.KindsSeen.IndexOf(kind) >= 0;
+                Check("a saw, a magnet, the drill, the chainsaw, a fire and a ridden rocket are each drawn", allKinds && V1Fx.Problem == null, metrics["effects_drawn"]);
+                Check("told V1 rides a rocket, the figure takes its riding pose, and leaves it when the rocket is gone", rideMost > 0.9f && motion.Ride < 0.1f, metrics["effects_drawn"]);
             }
             yield return BackToTitle();
             if (failed) yield break;
@@ -2686,6 +2739,9 @@ namespace V1Bridge.Ror
             float guardHp0 = guard.healthComponent.combinedHealth;
             int hits0 = V1Net.HostHits;
             uint gold0 = guest.master != null ? guest.master.money : 0;
+            metrics["hits_on_the_host_refused"] = Monsters.HitsRefused + " (the joining V1 shot at the host: " + F(me.healthComponent.combinedHealth) + " of " + F(me.healthComponent.fullCombinedHealth) + " health)";
+            Check("a hit of the joining V1's on the host is refused by friendly fire's rule", Monsters.HitsRefused >= 1 && me.healthComponent.combinedHealth >= me.healthComponent.fullCombinedHealth - 0.5f, metrics["hits_on_the_host_refused"]);
+            hits0 = V1Net.HostHits;
             MpMark("target-up");
             t = Now;
             while (V1Net.HostHits == hits0 && Now - t < 60f) yield return null;
@@ -3000,6 +3056,25 @@ namespace V1Bridge.Ror
             yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.Alpha1 } });
             yield return new WaitForSecondsRealtime(1.2f);
             MpMark("join-landed");
+
+            // 0. the other player is there for V1's weapons to meet, and Risk of Rain 2 says a hit on one's own side does nothing
+            CharacterBody friend = null;
+            foreach (var b in CharacterBody.readOnlyInstancesList) if (b != null && b != v1 && b.isPlayerControlled) friend = b;
+            yield return UkState();
+            metrics["other_players"] = Monsters.AlliesListed + " listed to ULTRAKILL as allies, of " + Monsters.Listed + " stand-ins in all (ULTRAKILL has " + (StateValue(stateReply, "proxies") ?? "?") + ")";
+            Check("the other player has a stand-in in ULTRAKILL", friend != null && Monsters.AlliesListed >= 1 && StateValue(stateReply, "proxies") == Monsters.Listed.ToString(), metrics["other_players"]);
+            if (friend != null)
+            {
+                int sentBefore = Monsters.HitsApplied;
+                for (int shot = 0; shot < 3 && Monsters.HitsApplied == sentBefore; shot++)
+                {
+                    yield return AimAt(() => friend.corePosition);
+                    yield return Tap(new V1Drive.Frame { buttons = 1 });
+                    yield return new WaitForSecondsRealtime(0.7f);
+                }
+                metrics["shot_at_the_other_player"] = (Monsters.HitsApplied - sentBefore) + " hits on them told to the host (" + Monsters.LastHit + "); their health " + F(friend.healthComponent.combinedHealth) + " of " + F(friend.healthComponent.fullCombinedHealth);
+                Check("V1's shot lands on the other player's stand-in, and does them no harm", Monsters.HitsApplied > sentBefore && friend.healthComponent.combinedHealth >= friend.healthComponent.fullCombinedHealth - 0.5f, metrics["shot_at_the_other_player"]);
+            }
 
             // 1. the monster the host put in front of V1
             yield return MpWait("target-up", 120f, "the host put a monster in front of V1");

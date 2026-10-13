@@ -87,7 +87,7 @@ namespace V1Bridge.Ror
         // ------------------------------------------------------------ every other player's game
 
         struct Fading { public Transform t; public float born, life, size, length; public bool blast; }
-        sealed class Marker { public Transform t, line; public Vector3 target, from; public float seen; public uint owner; public char kind; }
+        sealed class Marker { public Transform t, line; public PrimitiveType shape; public Vector3 target, from, size; public float seen; public uint owner; public char kind; }
         static readonly List<Fading> fading = new List<Fading>();
         static readonly Dictionary<long, Marker> markers = new Dictionary<long, Marker>();
         static readonly List<long> gone = new List<long>();
@@ -107,11 +107,17 @@ namespace V1Bridge.Ror
         }
 
         // the shapes are kept and used again: a nailgun or a shotgun asks for dozens a second
-        static readonly Stack<Transform> cubes = new Stack<Transform>(), balls = new Stack<Transform>();
+        static readonly Dictionary<PrimitiveType, Stack<Transform>> pools = new Dictionary<PrimitiveType, Stack<Transform>>();
+
+        static Stack<Transform> Pool(PrimitiveType type)
+        {
+            if (!pools.TryGetValue(type, out var pool)) pools[type] = pool = new Stack<Transform>();
+            return pool;
+        }
 
         static Transform Shape(PrimitiveType type, Material m, string name)
         {
-            var pool = type == PrimitiveType.Cube ? cubes : balls;
+            var pool = Pool(type);
             Transform t = null;
             // (a stage change takes the ones lying in the pool with it)
             while (pool.Count > 0 && t == null) t = pool.Pop();
@@ -131,15 +137,14 @@ namespace V1Bridge.Ror
             return t;
         }
 
-        static void Done(Transform t, bool cube)
+        static void Done(Transform t, PrimitiveType type)
         {
             if (t == null) return;
-            var pool = cube ? cubes : balls;
+            var pool = Pool(type);
             if (pool.Count >= 96) { UnityEngine.Object.Destroy(t.gameObject); return; }
             t.gameObject.SetActive(false);
             pool.Push(t);
         }
-
         static void Stretch(Transform t, Vector3 from, Vector3 to, float width)
         {
             Vector3 d = to - from;
@@ -191,7 +196,8 @@ namespace V1Bridge.Ror
             catch (Exception e) { Problem = e.Message; }
         }
 
-        /// <summary>What of that V1's is in the air now: a light for each, moved to where it is, taken away when it is gone.</summary>
+        /// <summary>What of that V1's is in the air (or stuck in the world) now: one shape for each, moved to where it is,
+        /// taken away when it is gone. One primitive apiece (two where it has a line): these come by the dozen.</summary>
         static void List(uint owner, string list)
         {
             listed.Clear();
@@ -203,25 +209,41 @@ namespace V1Bridge.Ror
                 char kind = a[1][0];
                 var at = new Vector3(F(a[2]), F(a[3]), F(a[4]));
                 listed.Add(key);
-                if (!markers.TryGetValue(key, out var m) || m.t == null)
+                // (a rocket V1 gets on, or off, is the same rocket under another letter)
+                if (markers.TryGetValue(key, out var m) && m.t != null && m.kind != kind) { Remove(key); m = null; }
+                if (m == null || m.t == null)
                 {
-                    float size;
+                    var shape = PrimitiveType.Sphere;
+                    Vector3 size;
                     Material mat;
                     switch (kind)
                     {
-                        case 'g': size = 0.45f; mat = Mat("rocket", new Color(1f, 0.45f, 0.1f), 1.5f); break;
-                        case 'c': size = 0.2f; mat = Mat("coin", new Color(1f, 0.8f, 0.15f), 1.5f); break;
-                        case 's': size = 0.4f; mat = Mat("saw", new Color(0.8f, 0.85f, 0.9f), 1.5f); break;
-                        case 'h': size = 0.25f; mat = Mat("hook", new Color(0.5f, 1f, 0.6f), 2f); break;
-                        case 'n': size = 0.1f; mat = Mat("nail", new Color(0.9f, 0.95f, 1f), 1.5f); break;
-                        default: size = 0.14f; mat = Mat("pellet", new Color(1f, 0.9f, 0.5f), 1.5f); break;
+                        case 'g': size = Vector3.one * 0.45f; mat = Mat("rocket", new Color(1f, 0.45f, 0.1f), 1.5f); break;
+                        // the one V1 is riding: long, and carried under V1's figure (Runner), not eased about on its own
+                        case 'r': size = new Vector3(0.35f, 0.35f, 1.5f); mat = Mat("rocket", new Color(1f, 0.45f, 0.1f), 1.5f); break;
+                        case 'c': size = Vector3.one * 0.2f; mat = Mat("coin", new Color(1f, 0.8f, 0.15f), 1.5f); break;
+                        // a saw: a thin disc, flat, turning
+                        case 's': shape = PrimitiveType.Cylinder; size = new Vector3(0.55f, 0.02f, 0.55f); mat = Mat("saw", new Color(0.8f, 0.85f, 0.9f), 1.2f); break;
+                        // the chainsaw out on its chain: a disc on edge, turning, with its line back to V1
+                        case 'w': shape = PrimitiveType.Cylinder; size = new Vector3(0.5f, 0.03f, 0.5f); mat = Mat("chainsaw", new Color(1f, 0.6f, 0.15f), 1.2f); break;
+                        case 'h': size = Vector3.one * 0.25f; mat = Mat("hook", new Color(0.5f, 1f, 0.6f), 2f); break;
+                        case 'n': size = Vector3.one * 0.1f; mat = Mat("nail", new Color(0.9f, 0.95f, 1f), 1.5f); break;
+                        // a magnet: a small red block where it stuck
+                        case 'm': shape = PrimitiveType.Cube; size = new Vector3(0.14f, 0.14f, 0.3f); mat = Mat("magnet", new Color(0.9f, 0.12f, 0.12f), 1.4f); break;
+                        // the railcannon's drill: a thin spike, turning, where it bores
+                        case 'd': shape = PrimitiveType.Cylinder; size = new Vector3(0.09f, 0.45f, 0.09f); mat = Mat("drill", new Color(0.7f, 0.95f, 0.3f), 1.6f); break;
+                        // a monster on fire: one flickering ball of flame at its middle
+                        case 'f': size = Vector3.one * 1.3f; mat = Mat("fire", new Color(1f, 0.38f, 0.05f), 1.6f); break;
+                        default: size = Vector3.one * 0.14f; mat = Mat("pellet", new Color(1f, 0.9f, 0.5f), 1.5f); break;
                     }
-                    m = new Marker { t = Shape(PrimitiveType.Sphere, mat, "V1 " + kind), owner = owner, kind = kind };
-                    m.t.localScale = Vector3.one * size;
+                    m = new Marker { t = Shape(shape, mat, "V1 " + kind), shape = shape, size = size, owner = owner, kind = kind };
+                    m.t.localScale = size;
                     m.t.position = at;
-                    // the hook has its line back to V1; a pellet or a nail is fast and small, and is drawn as the streak
-                    // from where it last was to where it is, which is what makes it read as a shot
-                    if (kind == 'h' || kind == 'p' || kind == 'n') m.line = Shape(PrimitiveType.Cube, mat, "V1 " + kind + " line");
+                    if (kind == 'w') m.t.rotation = Quaternion.Euler(0f, 0f, 90f);
+                    if (kind == 'd') m.t.rotation = Quaternion.Euler(70f, 0f, 0f);
+                    // the hook and the chainsaw have their line back to V1; a pellet or a nail is fast and small, and is
+                    // drawn as the streak from where it last was to where it is, which is what makes it read as a shot
+                    if (kind == 'h' || kind == 'w' || kind == 'p' || kind == 'n') m.line = Shape(PrimitiveType.Cube, mat, "V1 " + kind + " line");
                     if (m.line != null) m.line.localScale = Vector3.zero;
                     m.target = at;
                     markers[key] = m;
@@ -240,9 +262,15 @@ namespace V1Bridge.Ror
         static void Remove(long key)
         {
             if (!markers.TryGetValue(key, out var m)) return;
-            Done(m.t, false);
-            Done(m.line, true);
+            Done(m.t, m.shape);
+            Done(m.line, PrimitiveType.Cube);
             markers.Remove(key);
+        }
+
+        static CharacterBody Body(uint owner)
+        {
+            var go = NetworkServer.active ? NetworkServer.FindLocalObject(new NetworkInstanceId(owner)) : ClientScene.FindLocalObject(new NetworkInstanceId(owner));
+            return go != null ? go.GetComponent<CharacterBody>() : null;
         }
 
         sealed class Runner : MonoBehaviour
@@ -255,7 +283,7 @@ namespace V1Bridge.Ror
                     float age = (Time.time - f.born) / f.life;
                     if (f.t == null || age >= 1f)
                     {
-                        Done(f.t, !f.blast);
+                        Done(f.t, f.blast ? PrimitiveType.Sphere : PrimitiveType.Cube);
                         fading.RemoveAt(i);
                         continue;
                     }
@@ -265,21 +293,60 @@ namespace V1Bridge.Ror
                 }
                 if (markers.Count == 0) return;
                 gone.Clear();
-                float ease = 1f - Mathf.Exp(-30f * Time.deltaTime);
+                float dt = Time.deltaTime, ease = 1f - Mathf.Exp(-30f * dt);
                 foreach (var kv in markers)
                 {
                     var m = kv.Value;
                     // (the stage changed under it, or its V1's game stopped saying where it is)
                     if (m.t == null || Time.time - m.seen > 0.7f) { gone.Add(kv.Key); continue; }
-                    m.t.position = Vector3.Lerp(m.t.position, m.target, ease);
+                    switch (m.kind)
+                    {
+                        case 'r':
+                        {
+                            // The rocket V1 rides goes where V1's figure goes: both are V1, and eased on its own the rocket
+                            // slid about under the figure's feet. The figure is told it is riding (its pose, V1FigureMotion).
+                            var rider = Body(m.owner);
+                            var figure = rider != null ? V1Figure.On(rider) : null;
+                            var motion = figure != null ? figure.GetComponent<V1FigureMotion>() : null;
+                            if (rider == null || motion == null) { m.t.position = Vector3.Lerp(m.t.position, m.target, ease); break; }
+                            motion.RidingUntil = Time.time + 0.4f;
+                            Vector3 way = m.target - m.from;
+                            way.y *= 0.5f;
+                            if (way.sqrMagnitude > 0.0004f) m.t.rotation = Quaternion.Slerp(m.t.rotation, Quaternion.LookRotation(way.normalized), ease * 0.5f);
+                            m.t.position = rider.footPosition - Vector3.up * 0.2f;
+                            break;
+                        }
+                        case 's':
+                            m.t.position = Vector3.Lerp(m.t.position, m.target, ease);
+                            m.t.Rotate(0f, 1400f * dt, 0f, Space.Self);
+                            break;
+                        case 'w':
+                            m.t.position = Vector3.Lerp(m.t.position, m.target, ease);
+                            m.t.Rotate(0f, 1400f * dt, 0f, Space.Self);
+                            break;
+                        case 'd':
+                            m.t.position = m.target;
+                            m.t.Rotate(0f, 1100f * dt, 0f, Space.Self);
+                            break;
+                        case 'm':
+                            m.t.position = m.target;
+                            break;
+                        case 'f':
+                            // it follows the monster and flickers
+                            m.t.position = Vector3.Lerp(m.t.position, m.target + Vector3.up * 0.3f, ease);
+                            m.t.localScale = m.size * (0.85f + 0.2f * Mathf.PerlinNoise(Time.time * 9f, (kv.Key & 1023) * 0.37f));
+                            break;
+                        default:
+                            m.t.position = Vector3.Lerp(m.t.position, m.target, ease);
+                            break;
+                    }
                     if (m.line == null) continue;
-                    if (m.kind != 'h')
+                    if (m.kind == 'p' || m.kind == 'n')
                     {
                         Stretch(m.line, m.from, m.target, m.kind == 'n' ? 0.04f : 0.06f);
                         continue;
                     }
-                    var go = NetworkServer.active ? NetworkServer.FindLocalObject(new NetworkInstanceId(m.owner)) : ClientScene.FindLocalObject(new NetworkInstanceId(m.owner));
-                    var body = go != null ? go.GetComponent<CharacterBody>() : null;
+                    var body = Body(m.owner);
                     if (body != null) Stretch(m.line, body.corePosition, m.t.position, 0.05f);
                 }
                 foreach (long key in gone) Remove(key);

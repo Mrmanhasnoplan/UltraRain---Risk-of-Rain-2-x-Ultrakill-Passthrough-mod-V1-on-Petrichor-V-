@@ -102,8 +102,12 @@ namespace V1Bridge.Ror
     }
     /// <summary>The figure's limbs, moved by the mod's own code from nothing but how the figure is being carried about:
     /// its speed over the ground swings the legs and arms and leans it into the run, having no ground under it puts it
-    /// in a falling pose, and standing still it idles. Each player's game works this out for itself from the positions
-    /// Risk of Rain 2 already sends, so nothing more goes over the network, and nothing of ULTRAKILL's animation is used.</summary>
+    /// in a falling pose, and standing still it holds its stance. Each player's game works this out for itself from
+    /// the positions Risk of Rain 2 already sends, so nothing more goes over the network, and nothing of ULTRAKILL's
+    /// animation is used. Two things it is told (V1Fx): a punch, and that V1 is riding a rocket.
+    /// The stance is the mod's own reading of how ULTRAKILL's machines stand (V2 was the reference the owner named):
+    /// knees bent and feet apart, one a little ahead, the body leaning in, the gun arm up and forward, the other out
+    /// from the side, wings open.</summary>
     public class V1FigureMotion : MonoBehaviour
     {
         Transform body, head;
@@ -111,11 +115,21 @@ namespace V1Bridge.Ror
         readonly Transform[,] wing = new Transform[2, 4];
         Vector3 bodyAt, last, velocity;
         bool have;
-        float phase, swing, air, clock;
-        /// <summary>For the tests: how much of a run the limbs are swinging (0-1), and how much of the falling pose is on.</summary>
+        float phase, swing, air, ride, clock;
+        /// <summary>For the tests: how much of a run the limbs are swinging (0-1), how much of the falling pose is on, and of the riding one.</summary>
         public float Swing => swing;
         public float Air => air;
+        public float Ride => ride;
         public float LegSpread => leg[0] != null && leg[1] != null ? Quaternion.Angle(leg[0].localRotation, leg[1].localRotation) : 0f;
+        /// <summary>V1 is on a rocket until then (said again every frame it is: V1Fx).</summary>
+        public float RidingUntil = -10f;
+
+        // the stance, degrees (index 0 the left side, 1 the right; about x, forward is negative)
+        static readonly float[] StandThigh = { -20f, -6f }, StandKnee = { 30f, 18f }, StandArm = { -10f, -40f }, StandElbow = { -26f, -62f }, StandArmOut = { 13f, 5f };
+        const float StandLean = 8f, StandFeetApart = 6f, StandWings = 10f, StandDrop = 0.035f;
+        // on a rocket: low, front foot well forward, arms out for balance
+        static readonly float[] RideThigh = { -62f, 4f }, RideKnee = { 78f, 58f };
+        const float RideLean = 20f, RideArmOut = 48f, RideDrop = 0.2f;
 
         void Awake()
         {
@@ -159,27 +173,37 @@ namespace V1Bridge.Ror
             last = p;
             var over = new Vector3(velocity.x, 0f, velocity.z);
             float speed = over.magnitude;
-            bool grounded = Physics.Raycast(p + Vector3.up * 0.5f, Vector3.down, 1.2f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore);
+            bool riding = Time.time < RidingUntil;
+            bool grounded = riding || Physics.Raycast(p + Vector3.up * 0.5f, Vector3.down, 1.2f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore);
+            ride = Mathf.MoveTowards(ride, riding ? 1f : 0f, dt * 6f);
             air = Mathf.MoveTowards(air, grounded ? 0f : 1f, dt * 6f);
-            swing = Mathf.MoveTowards(swing, grounded ? Mathf.Clamp01(speed / 7f) : 0f, dt * 5f);
+            swing = Mathf.MoveTowards(swing, grounded && !riding ? Mathf.Clamp01(speed / 7f) : 0f, dt * 5f);
             // a stride every 2.4 m, however fast
             phase += speed * dt * 2.6f;
             clock += dt;
-            float sin = Mathf.Sin(phase), cos = Mathf.Cos(phase), reach = 42f * swing, ground = 1f - air;
+            float sin = Mathf.Sin(phase), cos = Mathf.Cos(phase), reach = 42f * swing;
+            // how much of each pose is on: standing (less of it the faster the run), in the air, on a rocket
+            float feet = (1f - air) * (1f - ride), stand = feet * (1f - 0.65f * swing);
             // into the run, or back from it when V1 is moving backwards
             float along = speed > 0.2f ? Vector3.Dot(over / speed, transform.forward) : 0f;
-            float lean = Mathf.Min(speed * 1.6f, 16f) * along * ground - 8f * air;
+            float lean = Mathf.Min(speed * 1.6f, 16f) * along * feet + StandLean * stand - 8f * air * (1f - ride) + RideLean * ride;
             body.localRotation = Quaternion.Euler(lean, 0f, 0f);
-            body.localPosition = bodyAt + Vector3.up * (Mathf.Sin(phase * 2f) * 0.025f * swing + Mathf.Sin(clock * 1.8f) * 0.008f);
-            if (head != null) head.localRotation = Quaternion.Euler(-lean * 0.6f, 0f, 0f);
+            body.localPosition = bodyAt + Vector3.up * (Mathf.Sin(phase * 2f) * 0.025f * swing + Mathf.Sin(clock * 1.8f) * 0.008f - StandDrop * stand - RideDrop * ride);
+            if (head != null) head.localRotation = Quaternion.Euler(-lean * 0.7f, 0f, 0f);
             for (int k = 0; k < 2; k++)
             {
-                // the left leg and the right arm go forward together (about x, forward is negative)
-                float side = k == 0 ? -1f : 1f, turn = k == 0 ? 1f : -1f;
-                if (leg[k] != null) leg[k].localRotation = Quaternion.Euler(-sin * turn * reach * ground + (k == 0 ? -28f : 12f) * air, 0f, 0f);
-                if (knee[k] != null) knee[k].localRotation = Quaternion.Euler(Mathf.Max(0f, cos * turn) * reach * 1.3f * ground + 40f * air, 0f, 0f);
-                if (arm[k] != null) arm[k].localRotation = Quaternion.Euler(sin * turn * reach * 0.8f * ground, 0f, side * 30f * air);
-                if (elbow[k] != null) elbow[k].localRotation = Quaternion.Euler(-(12f + 28f * swing) * ground - 20f * air, 0f, 0f);
+                // the left leg and the right arm go forward together
+                float side = k == 0 ? -1f : 1f, turn = k == 0 ? 1f : -1f, falling = air * (1f - ride);
+                if (leg[k] != null) leg[k].localRotation = Quaternion.Euler(
+                    StandThigh[k] * stand - sin * turn * reach * feet + (k == 0 ? -28f : 12f) * falling + RideThigh[k] * ride,
+                    0f, side * StandFeetApart * (stand + ride));
+                if (knee[k] != null) knee[k].localRotation = Quaternion.Euler(
+                    StandKnee[k] * stand + Mathf.Max(0f, cos * turn) * reach * 1.3f * feet + 40f * falling + RideKnee[k] * ride, 0f, 0f);
+                if (arm[k] != null) arm[k].localRotation = Quaternion.Euler(
+                    StandArm[k] * stand + sin * turn * reach * 0.8f * feet - 10f * ride,
+                    0f, side * (StandArmOut[k] * stand + 30f * falling + RideArmOut * ride));
+                if (elbow[k] != null) elbow[k].localRotation = Quaternion.Euler(
+                    StandElbow[k] * stand - (12f + 28f * swing) * feet * (1f - stand) - 20f * falling - 15f * ride, 0f, 0f);
                 // a punch, on the left arm, over whatever else it was doing
                 if (k == 0)
                 {
@@ -192,11 +216,11 @@ namespace V1Bridge.Ror
                         body.localRotation = body.localRotation * Quaternion.Euler(0f, (punchHeavy ? 30f : 20f) * out_, 0f);
                     }
                 }
-                // the wings: swept back in a run, spread in the air, never quite still
-                float spread = 6f * swing + 14f * air + Mathf.Sin(clock * 1.6f) * 2.5f;
+                // the wings: open in the stance, swept back in a run or on a rocket, spread in the air, never quite still
+                float spread = StandWings * stand + 6f * swing + 14f * falling + Mathf.Sin(clock * 1.6f) * 2.5f;
                 for (int i = 0; i < 4; i++)
                 {
-                    if (wing[k, i] != null) wing[k, i].localRotation = Quaternion.Euler(0f, side * 14f * swing, side * spread * (1.5f - i) / 1.5f);
+                    if (wing[k, i] != null) wing[k, i].localRotation = Quaternion.Euler(0f, side * (14f * swing + 26f * ride), side * spread * (1.5f - i) / 1.5f);
                 }
             }
         }

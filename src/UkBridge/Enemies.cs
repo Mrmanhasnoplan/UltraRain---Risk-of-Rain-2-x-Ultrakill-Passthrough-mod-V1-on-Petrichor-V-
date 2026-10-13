@@ -23,6 +23,8 @@ namespace V1Bridge.Uk
         public float lastSeen, w, h;
         /// <summary>The Whiplash pulls it to V1 (otherwise V1 to it), and it is being pulled right now.</summary>
         public bool light, pulled;
+        /// <summary>Another player, not a monster: there to be hit and hooked, but it does not bleed and nothing aims at it.</summary>
+        public bool ally;
         public float knockedAt = -10f;
         /// <summary>A monster given by its own hurt boxes (PARTS): these are what can be hit, the head and body boxes are off.</summary>
         public bool segmented;
@@ -117,14 +119,15 @@ namespace V1Bridge.Uk
                 var feet = new Vector3(F(a[1]), F(a[2]), F(a[3]));
                 float w = F(a[4]), h = F(a[5]);
                 bool light = a.Length > 7 && a[7] == "1";
-                if (proxies.TryGetValue(id, out var old) && old != null && old.light != light)
+                bool ally = a.Length > 9 && a[9] == "1";
+                if (proxies.TryGetValue(id, out var old) && old != null && (old.light != light || old.ally != ally))
                 {
                     RemoveProxy(old);
                     proxies.Remove(id);
                 }
                 if (!proxies.TryGetValue(id, out var p) || p == null)
                 {
-                    p = MakeProxy(id, w, h, light);
+                    p = MakeProxy(id, w, h, light, ally);
                     proxies[id] = p;
                     p.lastPos = feet;
                 }
@@ -279,7 +282,7 @@ namespace V1Bridge.Uk
             p.occluder.localScale = new Vector3(w * 0.8f, h * 0.95f, w * 0.8f);
         }
 
-        RorProxy MakeProxy(int id, float w, float h, bool light)
+        RorProxy MakeProxy(int id, float w, float h, bool light, bool ally = false)
         {
             var root = new GameObject("ror_" + id);
             root.SetActive(false);
@@ -289,6 +292,7 @@ namespace V1Bridge.Uk
             var proxy = root.AddComponent<RorProxy>();
             proxy.id = id;
             proxy.light = light;
+            proxy.ally = ally;
             // what the Whiplash drags when the monster is a light one; still, and out of physics' hands, otherwise
             proxy.rootRb = root.AddComponent<Rigidbody>();
             proxy.rootRb.isKinematic = true;
@@ -359,6 +363,8 @@ namespace V1Bridge.Uk
             if (worldRoot != null) root.transform.SetParent(worldRoot.transform, false);
             root.SetActive(true);
             proxy.UpdateCachedTransformData();
+            // another player is nobody's enemy: not counted among them, and not something coins or aim go for
+            if (ally) return proxy;
             MonoSingleton<EnemyTracker>.Instance?.AddEnemy(eid);
             // coins and auto-aim look enemies up in the TargetTracker, not EnemyTracker
             try
@@ -560,7 +566,7 @@ namespace V1Bridge.Uk
             // a blast throws what it reaches, hurt or not (a rocket that lands beside an enemy only throws it):
             // ULTRAKILL's explosions push with 50000 along the way out, lifted off the ground
             // (once per blast: an explosion touches each of a stand-in's boxes, and is several explosions in one)
-            if (fromExplosion && force.sqrMagnitude > 1f && Time.time - p.knockedAt > 0.3f)
+            if (fromExplosion && force.sqrMagnitude > 1f && Time.time - p.knockedAt > 0.3f && !p.ally)
             {
                 p.knockedAt = Time.time;
                 var dir = force.normalized;
@@ -578,6 +584,12 @@ namespace V1Bridge.Uk
             }
             var at = hitPoint != Vector3.zero ? hitPoint : target != null && target != __instance.gameObject ? target.transform.position : p.center.position;
             b.ReportDamage(p, dmg, head, fromExplosion, __instance.hitter, at);
+            // another player: Risk of Rain 2 says what the hit does; no blood (so no healing off one's friends), no shock
+            if (p.ally)
+            {
+                __instance.hitterAttributes.Clear();
+                return false;
+            }
             // ULTRAKILL's own blood where it was hit: splatters, stains, and V1's healing when close (the amounts
             // ULTRAKILL gives: 3 per pellet or blast, 1 per nail)
             var type = head ? GoreType.Head : dmg >= 1f || fromExplosion ? GoreType.Body : GoreType.Small;

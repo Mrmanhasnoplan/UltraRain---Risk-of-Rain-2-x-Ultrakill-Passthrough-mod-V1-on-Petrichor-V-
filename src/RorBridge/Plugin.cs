@@ -42,11 +42,11 @@ namespace V1Bridge.Ror
             UkProfileDir = Config.Bind("ULTRAKILL", "ProfileDir", "", "The BepInEx profile ULTRAKILL is started with. Empty: the 'uk' folder next to this profile.");
             Port = Config.Bind("Link", "Port", Proto.DefaultPort, "Loopback port UkBridge listens on.");
             UkHeight = Config.Bind("Performance", "UltrakillHeight", 720, "Height ULTRAKILL renders at (its width follows this window's shape). Lower is faster.");
-            DamageCoefficient = Config.Bind("Balance", "DamageCoefficient", 3f, "RoR2 damage of one ULTRAKILL damage unit (a revolver shot), as a multiple of V1's damage stat. 3 = 300%.");
+            DamageCoefficient = Config.Bind("Balance", "DamageCoefficient", 1f, "RoR2 damage of one ULTRAKILL damage unit (a revolver shot), as a multiple of V1's damage stat. 1 = 100%.");
             MouseScale = Config.Bind("Controls", "MouseScale", 2f, "Multiplies the mouse movement handed to ULTRAKILL, on top of ULTRAKILL's own sensitivity.");
             IncomingDamage = Config.Bind("Balance", "IncomingDamage", 1f, "Multiplies the damage Risk of Rain 2 does to V1.");
             HideRorHud = Config.Bind("HUD", "HideRoR2HealthAndSkills", true, "Hide Risk of Rain 2's health bar and skill icons while playing V1 (ULTRAKILL's HUD shows them).");
-            V1Health = Config.Bind("Balance", "V1Health", 90f, "V1's base health in Risk of Rain 2, at level 1 (it grows 30% of this per level, as every survivor's does). V1's real health is ULTRAKILL's 100: a bigger number here makes each Risk of Rain 2 hit cost a smaller share of it.");
+            V1Health = Config.Bind("Balance", "V1Health", 100f, "V1's base health in Risk of Rain 2, at level 1 (it grows 30% of this per level, as every survivor's does). V1's real health is ULTRAKILL's 100: a bigger number here makes each Risk of Rain 2 hit cost a smaller share of it.");
             UkFps = Config.Bind("Performance", "UltrakillFpsCap", 120, "ULTRAKILL's frame rate cap.");
             var harmony = new Harmony("dev.v1bridge.ror");
             SaveGuard.Apply(harmony);

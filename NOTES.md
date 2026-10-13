@@ -341,6 +341,31 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   for each thing in the air, eased towards where it was last said to be, and a line from V1 to its hook. Never
   drawn in the V1 player's own game. Nothing of ULTRAKILL's art or sound is involved. Not shown: punches, the
   shotgun's muzzle blast as such (its pellets are), fire, the oil on a monster, and there is no sound.
+- The owner's list of 2026-10-13 (ten points, after confirming that ULTRAKILL opens by itself and the frame rate is good):
+  - Defaults: `V1Health` 100 (was 90) and `DamageCoefficient` 1 (was 3). Existing config files keep what they hold.
+  - The laugh after death: ULTRAKILL's death sequence kept sounding for as long as V1 stayed dead, which in a
+    multiplayer run is until the next one. `Level.UpdateSound` sets `AudioListener.volume` to 0 while RoR2 is not in
+    a V1 run (`IDLE`) or V1 has been dead 4 s, and back to the player's volume otherwise (RESPAWN, a new run).
+  - Hitboxes for the other players: `ENTS` now also lists every other player-controlled body of V1's team, with a
+    tenth field `ally` = 1 (protocol 14). UkBridge gives it the same stand-in as a monster, but not entered with
+    `EnemyTracker` or the `TargetTracker` (coins and aim do not go for friends), never light (the Whiplash takes V1
+    to it), and a hit on it spawns no blood (no healing off one's friends), no knock and no shock. The hit still
+    goes out as `DMG`, and `Monsters.Hit` now asks `FriendlyFireManager.ShouldDirectHitProceed` first: on V1's own
+    side nothing happens unless RoR2's friendly fire is on (`HealthComponent.TakeDamage` itself does not check, so
+    without this a shot would have hurt a friend). Drones and turrets are not listed.
+  - What the other players are shown, more of it (`UkBridge/Fx.cs`, `V1Fx.cs`), one primitive each because they come
+    by the dozen: saws are a thin spinning disc (were balls); the chainsaw out on its chain (`Chainsaw`) a disc on
+    edge with a line back to V1 (kind w); magnets (`Magnet`) a small red block (m); the railcannon's drill
+    (`Harpoon`) a thin turning spike (d); a monster on fire (any of its `Flammable`s `burning`) one flickering ball
+    at its middle (f). Burning ground is not shown. The new kinds hook `Start` like the rest.
+  - Rocket riding: a grenade with `playerRiding` is listed as kind r, and the other games carry its shape under V1's
+    figure (at the body's feet, turned the way it travels) instead of easing it about on its own 20 times a second
+    while the figure moves by RoR2's sync: the two used to slide against each other. The figure is told it rides
+    (`V1FigureMotion.RidingUntil`) and crouches, front foot forward, arms out, with no falling pose.
+  - The stance (`V1FigureMotion`): standing, the figure no longer hangs straight. Knees bent, feet apart with the
+    left ahead, the body leaning in 8 degrees, the right arm up and forward with a gun block in the hand, the left
+    out from the side, wings open; it stands 3.5 cm lower. The mod's own reading of how ULTRAKILL's machines stand
+    (the owner named V2 as the reference); no ULTRAKILL pose data is used. Less of it the faster the run.
 - ULTRAKILL is started from its exe, not through Steam (2026-10-13; the owner's report: ULTRAKILL did not open, and the
   frame rate was still poor). `steam.exe -applaunch` goes through Steam's launcher, which stopped on an "Unable to
   Sync" prompt (cloud saves; Play anyway / Cancel) that sat behind Risk of Rain 2: no ULTRAKILL, and the run began
@@ -433,6 +458,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-13 | the list of ten: figure, audio, fx, mphost + mpjoin (golemplains) | PASS: figure 39/39 (3 runs), audio 21/21, fx 26/26, two games host 58/58 and joining V1 52/52; 0 real files changed | figure: the stance and the riding pose in the screenshots; from made-up reports a saw, a magnet, the drill, the chainsaw with its line, a fire and a ridden rocket were each drawn (the fire only after a fix: its flicker took a number too big for the noise function and came out with no size); riding pose 1.0 while told, 0 after. audio: ULTRAKILL's listener at 0.52 one second after V1's death, 0 at 6.5 s. fx: hooks ok with the three new ones, 0.018 ms a frame with 20 things in the air. Two games: the host listed to the joining V1's ULTRAKILL as an ally (1 of 1 stand-ins), V1's 2 revolver shots at it reached the host and were refused, the host at 110 of 110. The host logged 1 exception, `RoR2.UI.ModelPanel.Update` (a UI panel of RoR2's, at the end with both players dead; not looked into). NOT run: magnets, the drill, the chainsaw, fire and rocket riding as ULTRAKILL really reports them (the drawing was fed by hand; their hooks only shown to apply); the Whiplash and a punch on another player; friendly fire switched on; the sound coming back after a respawn; the new defaults on a fresh config; how the stance reads from a player's eye level (the test camera looks down from above its drop pod) |
 | 2026-10-13 | handshake and picture, ULTRAKILL started from its exe (golemplains) | handshake first FAIL 5/6 (ULTRAKILL ran without UkBridge: the inherited Doorstop variables, see Incidents), then PASS 16/16; picture PASS 32/32; 0 watched real files changed in the passing runs, 0 exceptions | handshake 5.0 s after the start (24 s through Steam), guards ok(9), sandboxed saves, quit 0.9 s after QUIT. picture: ULTRAKILL ready 16.8 s after the pick, 640x360 (the owner's setting), 59.7 fps shown, RoR2 60 fps, frame age 38 ms, merge 1.4 ms. Each of these launches of RoR2 through Steam stopped on Steam's "Unable to Sync" prompt, and Play anyway was clicked for it (the owner's instruction). NOT run: a real multiplayer session with this build; the chat message when ULTRAKILL does not come |
 | 2026-10-13 | fx, with the cost of the effects measured (golemplains) | before: ULTRAKILL frame 16.7 ms with the effects off, 37.5 ms with them on and nothing happening (31.7 ms of it the looking-up). After: PASS 26/26, 0 real files changed, 0 exceptions | effects off 16.70 ms / on and idle 16.70 ms (0.0013 ms) / on with the saw launcher held 16.67 ms (0.015 ms, 12 lights at once); hooks ok. Shotgun: pellets listed and drawn (kind p); slot 3 was the Sawblade Launcher: saws (kind s), so nails proper (kind n) were still not exercised. One game on one PC: the frame rate with real players in a real game was not measured, nor the other players' side |
 | 2026-10-13 | punch and spectating: figure, fx, mphost + mpjoin (golemplains) | PASS: figure 37/37, fx 23/23 (final version), two games host 57/57 and joining V1 50/50; 0 real files changed, 0 exceptions | figure: told of a punch, the left arm is 95 degrees out 0.15 s in and back at rest 0.8 s later. fx: a punch at the air is reported and passed on; the view angles this player sends equal V1's pitch and yaw after a turn. Two games: the host was shown the joining V1's punches on its figure; it had the joining V1's yaw exactly (105.1); after the host's own death its camera was on V1 ("Spectating: V1") and looked along V1's yaw exactly after V1 turned (300.1). Two fx runs failed the angles check on the way: first they turned out to be on the network user, not the master; then, in a game that hosts, RoR2's camera wrote over them (sent yaw 241 against V1's 123), which the prefix on the two sending methods fixed (sent pitch -38.8 / yaw 43.0 = V1's exactly). The two-game run above was with the version BEFORE that last fix; it was not repeated with the final one because Steam stopped starting the game for the tests (its log: "failed to update ownership ticket (Access Denied)"). NOT run: a joining player spectating a hosting V1, pitch on the spectating side, the Knuckleblaster's punch |
