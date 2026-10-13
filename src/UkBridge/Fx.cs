@@ -75,7 +75,7 @@ namespace V1Bridge.Uk
             }
             blasts.Clear();
 
-            // what is in the air or stuck in the world: g rockets and grenades (r the one V1 is riding), n nails, s saws,
+            // what is in the air or stuck in the world: g rockets and grenades (r the one V1 is riding), b cannonballs, n nails, s saws,
             // p pellets and other shots of V1's, c coins, h the Whiplash's hook, w the chainsaw out on its chain,
             // m magnets, d the railcannon's drill, f a monster on fire
             if (Time.unscaledTime < fxNextList) return;
@@ -101,7 +101,7 @@ namespace V1Bridge.Uk
             for (int i = balls.Count - 1; i >= 0; i--)
             {
                 if (balls[i] == null) { balls.RemoveAt(i); continue; }
-                Add(balls[i], 'g', balls[i].transform.position);
+                Add(balls[i], 'b', balls[i].transform.position);
             }
             var coins = MonoSingleton<CoinTracker>.Instance;
             if (coins != null) foreach (var c in coins.revolverCoinsList) if (c != null && c.gameObject.activeInHierarchy) Add(c, 'c', c.transform.position);

@@ -221,6 +221,8 @@ namespace V1Bridge.Ror
                         case 'g': size = Vector3.one * 0.45f; mat = Mat("rocket", new Color(1f, 0.45f, 0.1f), 1.5f); break;
                         // the one V1 is riding: long, and carried under V1's figure (Runner), not eased about on its own
                         case 'r': size = new Vector3(0.35f, 0.35f, 1.5f); mat = Mat("rocket", new Color(1f, 0.45f, 0.1f), 1.5f); break;
+                        // a cannonball: big and black
+                        case 'b': size = Vector3.one * 1.1f; mat = Mat("cannonball", new Color(0.03f, 0.03f, 0.035f), 0f); break;
                         case 'c': size = Vector3.one * 0.2f; mat = Mat("coin", new Color(1f, 0.8f, 0.15f), 1.5f); break;
                         // a saw: a thin disc, flat, turning
                         case 's': shape = PrimitiveType.Cylinder; size = new Vector3(0.55f, 0.02f, 0.55f); mat = Mat("saw", new Color(0.8f, 0.85f, 0.9f), 1.2f); break;

@@ -2457,6 +2457,7 @@ namespace V1Bridge.Ror
                 string Report(bool riding) => Proto.FxList + " " + ownerId + " "
                     + "1,s," + P(mid + across * 1.6f) + "2,m," + P(mid + across * 2.4f) + "3,d," + P(mid + across * 3.2f)
                     + "4,w," + P(mid - across * 1.6f + flat * -1f) + "5,f," + P(mid - across * 2.8f)
+                    + "7,b," + P(mid - across * 2.8f + flat * -2.2f)
                     + "6," + (riding ? "r" : "g") + "," + P(other.footPosition + (riding ? Vector3.zero : -flat * 2f));
                 float began = Now, rideMost = 0f;
                 bool worldSnapped = false;
@@ -2474,8 +2475,8 @@ namespace V1Bridge.Ror
                 yield return new WaitForSecondsRealtime(1.5f);
                 metrics["effects_drawn"] = "kinds " + V1Fx.KindsSeen + ", up to " + V1Fx.MarkersPeak + " at once; riding pose up to " + F(rideMost) + ", " + F(motion.Ride) + " once the rocket is gone" + (V1Fx.Problem != null ? "; " + V1Fx.Problem : "");
                 bool allKinds = true;
-                foreach (char kind in "smdwfr") allKinds &= V1Fx.KindsSeen.IndexOf(kind) >= 0;
-                Check("a saw, a magnet, the drill, the chainsaw, a fire and a ridden rocket are each drawn", allKinds && V1Fx.Problem == null, metrics["effects_drawn"]);
+                foreach (char kind in "smdwfrb") allKinds &= V1Fx.KindsSeen.IndexOf(kind) >= 0;
+                Check("a saw, a magnet, the drill, the chainsaw, a fire, a cannonball and a ridden rocket are each drawn", allKinds && V1Fx.Problem == null, metrics["effects_drawn"]);
                 Check("told V1 rides a rocket, the figure takes its riding pose, and leaves it when the rocket is gone", rideMost > 0.9f && motion.Ride < 0.1f, metrics["effects_drawn"]);
             }
             yield return BackToTitle();

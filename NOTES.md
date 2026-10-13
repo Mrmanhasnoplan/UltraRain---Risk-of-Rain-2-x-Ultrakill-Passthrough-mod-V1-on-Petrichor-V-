@@ -358,6 +358,9 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
     edge with a line back to V1 (kind w); magnets (`Magnet`) a small red block (m); the railcannon's drill
     (`Harpoon`) a thin turning spike (d); a monster on fire (any of its `Flammable`s `burning`) one flickering ball
     at its middle (f). Burning ground is not shown. The new kinds hook `Start` like the rest.
+  - Cannonballs (asked for straight after the list): their own kind, b, a big black ball 1.1 m across; they had gone
+    out as kind g and been drawn as a rocket. Protocol 15. Seen in the figure test's picture (39/39), from a made-up
+    report; a real cannonball was not fired.
   - Rocket riding: a grenade with `playerRiding` is listed as kind r, and the other games carry its shape under V1's
     figure (at the body's feet, turned the way it travels) instead of easing it about on its own 20 times a second
     while the figure moves by RoR2's sync: the two used to slide against each other. The figure is told it rides
