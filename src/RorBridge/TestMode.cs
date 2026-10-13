@@ -2478,6 +2478,16 @@ namespace V1Bridge.Ror
                 yield return new WaitForSecondsRealtime(0.6f);
             }
 
+            // what it costs: ULTRAKILL's frame and the time it spends saying its effects, with the saying off and then on
+            V1Fx.Force = false;
+            yield return new WaitForSecondsRealtime(4f);
+            yield return UkState();
+            metrics["cost_fx_off"] = "ULTRAKILL frame " + (StateValue(stateReply, "framems") ?? "?") + " ms, effects " + (StateValue(stateReply, "fxms") ?? "?") + " ms; RoR2 " + F(1f / Time.smoothDeltaTime) + " fps";
+            V1Fx.Force = true;
+            yield return new WaitForSecondsRealtime(4f);
+            yield return UkState();
+            metrics["cost_fx_on_idle"] = "ULTRAKILL frame " + (StateValue(stateReply, "framems") ?? "?") + " ms, effects " + (StateValue(stateReply, "fxms") ?? "?") + " ms; RoR2 " + F(1f / Time.smoothDeltaTime) + " fps";
+
             // 1. a revolver shot at nothing
             yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.Alpha1 } });
             yield return new WaitForSecondsRealtime(1.2f);
@@ -2510,6 +2520,34 @@ namespace V1Bridge.Ror
             yield return Until(() => V1Fx.KindsSeen.Contains("h"), 2f, "ror2-fx-hook");
             V1Drive.Script = () => default;
             Check("the Whiplash's hook has a light and a line", V1Fx.KindsSeen.Contains("h"), "kinds seen: " + V1Fx.KindsSeen);
+            yield return new WaitForSecondsRealtime(1.5f);
+
+            // 4a. the shotgun's pellets, and nails: fast small things, drawn as streaks
+            yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.Alpha2 } });
+            yield return new WaitForSecondsRealtime(1.3f);
+            yield return AimAt(() => sky);
+            for (int attempt = 0; attempt < 3 && !V1Fx.KindsSeen.Contains("p"); attempt++)
+            {
+                yield return Tap(new V1Drive.Frame { buttons = 1 });
+                yield return Until(() => V1Fx.KindsSeen.Contains("p"), 1.5f, "ror2-fx-pellets");
+            }
+            yield return UkState();
+            metrics["weapon_for_the_pellets"] = StateValue(stateReply, "weapon") ?? "?";
+            Check("a shotgun blast's pellets are drawn", V1Fx.KindsSeen.Contains("p"), "kinds seen: " + V1Fx.KindsSeen + "; weapon " + metrics["weapon_for_the_pellets"] + "; up to " + V1Fx.MarkersPeak + " lights at once");
+            yield return Tap(new V1Drive.Frame { keys = new[] { KeyCode.Alpha3 } });
+            yield return new WaitForSecondsRealtime(1.3f);
+            yield return AimAt(() => sky);
+            V1Drive.Script = () => new V1Drive.Frame { buttons = 1 };
+            yield return Until(() => V1Fx.KindsSeen.Contains("n") || V1Fx.KindsSeen.Contains("s"), 2.5f, "ror2-fx-nails");
+            yield return new WaitForSecondsRealtime(1.5f);
+            // what it costs with the air full of nails
+            yield return UkState();
+            V1Drive.Script = () => default;
+            metrics["weapon_for_the_nails"] = StateValue(stateReply, "weapon") ?? "?";
+            metrics["cost_fx_on_firing"] = "ULTRAKILL frame " + (StateValue(stateReply, "framems") ?? "?") + " ms, effects " + (StateValue(stateReply, "fxms") ?? "?") + " ms; RoR2 " + F(1f / Time.smoothDeltaTime) + " fps; " + V1Fx.MarkersPeak + " lights at most";
+            Check("nails (or saws) in flight are drawn", V1Fx.KindsSeen.Contains("n") || V1Fx.KindsSeen.Contains("s"), "kinds seen: " + V1Fx.KindsSeen + "; weapon " + metrics["weapon_for_the_nails"]);
+            float fxMs = float.TryParse(StateValue(stateReply, "fxms"), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed) ? parsed : 999f;
+            Check("saying its effects costs ULTRAKILL under a millisecond a frame, even then", fxMs < 1f && (StateValue(stateReply, "fxhooks") ?? "") == "ok", metrics["cost_fx_on_firing"] + "; hooks " + (StateValue(stateReply, "fxhooks") ?? "?"));
             yield return new WaitForSecondsRealtime(1.5f);
 
             // 4b. a punch at the air: said to the other players, whose figure of V1 swings its arm

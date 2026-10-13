@@ -11,6 +11,7 @@ namespace V1Bridge.Uk
     {
         public static Bridge I;
         public int TestCoins;
+        public float FxMs, FrameMs = 16f;
         int parentPid;
         float nextPark, nextParentCheck;
         bool quitting;
@@ -39,7 +40,11 @@ namespace V1Bridge.Uk
             UpdateModelExport();
             UpdateOil();
             SendCoins();
+            long fxStart = System.Diagnostics.Stopwatch.GetTimestamp();
             SendFx();
+            // (for the tests: what saying V1's effects costs a frame, and ULTRAKILL's frame rate, both smoothed)
+            FxMs = Mathf.Lerp(FxMs, (float)((System.Diagnostics.Stopwatch.GetTimestamp() - fxStart) * 1000.0 / System.Diagnostics.Stopwatch.Frequency), 0.05f);
+            FrameMs = Mathf.Lerp(FrameMs, Time.unscaledDeltaTime * 1000f, 0.05f);
             InjectInput();
             SendPose();
             // out of sight from the first frame: off-screen, never minimised (a minimised Unity window stops drawing)
@@ -263,7 +268,7 @@ namespace V1Bridge.Uk
 
         string StateLine()
         {
-            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " volumes=" + VolumeInfo + " audio=" + (levelPrepared ? AudioInfo() : "-") + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " parts=" + PartsShown +" dmg=" + DamageReports + " hook=" + HookInfo() + " pulled=" + PulledInfo() + " coins=" + (MonoSingleton<ObjectTracker>.Instance != null ? MonoSingleton<ObjectTracker>.Instance.zappablesList.Count : -1) + " nails=" + NailCount() + " conductions=" + Conductions + " launches=" + Launches + " knocks=" + Knocks + " pulls=" + Pulls + " shots=" + shots.Count + " blown=" + ShotsBlown + " coinhits=" + CoinHits + " fx=" + FxBeams + "/" + FxBlasts + "/" + FxFlying + "/" + FxPunches +" weapon=" + WeaponInfo() + " parries=" + Parries + " res=" + Screen.width + "x" + Screen.height
+            return "scene=" + (SceneHelper.CurrentScene ?? "none").Replace(' ', '_') + " ready=" + (levelPrepared ? 1 : 0) + " landed=" + (v1Landed ? 1 : 0) + " frames=" + FramesPublished + " volumes=" + VolumeInfo + " audio=" + (levelPrepared ? AudioInfo() : "-") + " layer=" + (levelPrepared && MonoSingleton<NewMovement>.Instance != null ? MonoSingleton<NewMovement>.Instance.gameObject.layer : -1) + " proxies=" + proxies.Count + " parts=" + PartsShown +" dmg=" + DamageReports + " hook=" + HookInfo() + " pulled=" + PulledInfo() + " coins=" + (MonoSingleton<ObjectTracker>.Instance != null ? MonoSingleton<ObjectTracker>.Instance.zappablesList.Count : -1) + " nails=" + NailCount() + " conductions=" + Conductions + " launches=" + Launches + " knocks=" + Knocks + " pulls=" + Pulls + " shots=" + shots.Count + " blown=" + ShotsBlown + " coinhits=" + CoinHits + " fxhooks=" + (FxHooks.Problem == null ? "ok" : FxHooks.Problem.Replace(' ', '_')) + " fxms=" + S(FxMs) + " framems=" + S(FrameMs) + " fx=" + FxBeams + "/" + FxBlasts + "/" + FxFlying + "/" + FxPunches +" weapon=" + WeaponInfo() + " parries=" + Parries + " res=" + Screen.width + "x" + Screen.height
                    + " t=" + Time.unscaledTime.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " blocked=" + SaveGuard.Blocked
                    + " saves=" + GameProgressSaver.BaseSavePath.Replace(' ', '?');
         }

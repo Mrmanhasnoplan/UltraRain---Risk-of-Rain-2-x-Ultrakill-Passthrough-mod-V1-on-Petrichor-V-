@@ -87,7 +87,7 @@ namespace V1Bridge.Ror
         // ------------------------------------------------------------ every other player's game
 
         struct Fading { public Transform t; public float born, life, size, length; public bool blast; }
-        sealed class Marker { public Transform t, line; public Vector3 target; public float seen; public uint owner; public char kind; }
+        sealed class Marker { public Transform t, line; public Vector3 target, from; public float seen; public uint owner; public char kind; }
         static readonly List<Fading> fading = new List<Fading>();
         static readonly Dictionary<long, Marker> markers = new Dictionary<long, Marker>();
         static readonly List<long> gone = new List<long>();
@@ -106,16 +106,38 @@ namespace V1Bridge.Ror
             return m;
         }
 
+        // the shapes are kept and used again: a nailgun or a shotgun asks for dozens a second
+        static readonly Stack<Transform> cubes = new Stack<Transform>(), balls = new Stack<Transform>();
+
         static Transform Shape(PrimitiveType type, Material m, string name)
         {
-            var go = GameObject.CreatePrimitive(type);
-            go.name = name;
-            UnityEngine.Object.Destroy(go.GetComponent<Collider>());
-            var r = go.GetComponent<MeshRenderer>();
-            r.sharedMaterial = m;
-            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            r.receiveShadows = false;
-            return go.transform;
+            var pool = type == PrimitiveType.Cube ? cubes : balls;
+            Transform t = null;
+            // (a stage change takes the ones lying in the pool with it)
+            while (pool.Count > 0 && t == null) t = pool.Pop();
+            if (t == null)
+            {
+                var go = GameObject.CreatePrimitive(type);
+                UnityEngine.Object.Destroy(go.GetComponent<Collider>());
+                var made = go.GetComponent<MeshRenderer>();
+                made.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                made.receiveShadows = false;
+                t = go.transform;
+            }
+            t.name = name;
+            t.GetComponent<MeshRenderer>().sharedMaterial = m;
+            t.rotation = Quaternion.identity;
+            t.gameObject.SetActive(true);
+            return t;
+        }
+
+        static void Done(Transform t, bool cube)
+        {
+            if (t == null) return;
+            var pool = cube ? cubes : balls;
+            if (pool.Count >= 96) { UnityEngine.Object.Destroy(t.gameObject); return; }
+            t.gameObject.SetActive(false);
+            pool.Push(t);
         }
 
         static void Stretch(Transform t, Vector3 from, Vector3 to, float width)
@@ -197,10 +219,15 @@ namespace V1Bridge.Ror
                     m = new Marker { t = Shape(PrimitiveType.Sphere, mat, "V1 " + kind), owner = owner, kind = kind };
                     m.t.localScale = Vector3.one * size;
                     m.t.position = at;
-                    if (kind == 'h') m.line = Shape(PrimitiveType.Cube, mat, "V1 hook line");
+                    // the hook has its line back to V1; a pellet or a nail is fast and small, and is drawn as the streak
+                    // from where it last was to where it is, which is what makes it read as a shot
+                    if (kind == 'h' || kind == 'p' || kind == 'n') m.line = Shape(PrimitiveType.Cube, mat, "V1 " + kind + " line");
+                    if (m.line != null) m.line.localScale = Vector3.zero;
+                    m.target = at;
                     markers[key] = m;
                     if (KindsSeen.IndexOf(kind) < 0) KindsSeen += kind;
                 }
+                m.from = m.target;
                 m.target = at;
                 m.seen = Time.time;
             }
@@ -213,8 +240,8 @@ namespace V1Bridge.Ror
         static void Remove(long key)
         {
             if (!markers.TryGetValue(key, out var m)) return;
-            if (m.t != null) UnityEngine.Object.Destroy(m.t.gameObject);
-            if (m.line != null) UnityEngine.Object.Destroy(m.line.gameObject);
+            Done(m.t, false);
+            Done(m.line, true);
             markers.Remove(key);
         }
 
@@ -228,7 +255,7 @@ namespace V1Bridge.Ror
                     float age = (Time.time - f.born) / f.life;
                     if (f.t == null || age >= 1f)
                     {
-                        if (f.t != null) Destroy(f.t.gameObject);
+                        Done(f.t, !f.blast);
                         fading.RemoveAt(i);
                         continue;
                     }
@@ -246,6 +273,11 @@ namespace V1Bridge.Ror
                     if (m.t == null || Time.time - m.seen > 0.7f) { gone.Add(kv.Key); continue; }
                     m.t.position = Vector3.Lerp(m.t.position, m.target, ease);
                     if (m.line == null) continue;
+                    if (m.kind != 'h')
+                    {
+                        Stretch(m.line, m.from, m.target, m.kind == 'n' ? 0.04f : 0.06f);
+                        continue;
+                    }
                     var go = NetworkServer.active ? NetworkServer.FindLocalObject(new NetworkInstanceId(m.owner)) : ClientScene.FindLocalObject(new NetworkInstanceId(m.owner));
                     var body = go != null ? go.GetComponent<CharacterBody>() : null;
                     if (body != null) Stretch(m.line, body.corePosition, m.t.position, 0.05f);

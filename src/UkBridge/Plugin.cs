@@ -34,6 +34,7 @@ namespace V1Bridge.Uk
                 return;
             }
             harmony.PatchAll(typeof(Plugin).Assembly);
+            FxHooks.Apply(harmony);
             Application.runInBackground = true;
             var go = new GameObject("UkBridge");
             DontDestroyOnLoad(go);
