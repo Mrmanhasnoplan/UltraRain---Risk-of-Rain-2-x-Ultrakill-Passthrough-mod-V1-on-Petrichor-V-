@@ -288,6 +288,34 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   untouched: they still hang on the hidden Commando skeleton, so friends may see items floating about the figure.
   `Install.ps1` no longer needs ULTRAKILL when `prebuilt\` is there: it sets up Risk of Rain 2's side only, for
   joining a V1 host. With no .decomp on this PC, RoR2's code was read as IL with the Mono.Cecil in the profile.
+- V1 in someone else's game, stage 1 (`V1Net.cs`, 2026-10-13; the owner asked for V1 without hosting). Until now
+  everything V1 did to RoR2's world ran in the V1 player's own game, which had to be the host. A joining player's
+  game may not deal damage or write health, so those are now the host's to carry out, on lines of text over RoR2's
+  own connection (UNET message types 27121 to the host, 27122 to the joining game, reliable channel; registered on
+  `NetworkManagerSystem.onStartServerGlobal` / `onStartClientGlobal`):
+  - joining V1 -> host: `ENG 0|1` (my bridge has hold of my body), `HP hp dead` (on change and every 0.5 s),
+    `DMG <monster net id> mult head explosion hitter x y z` (RoR2 coordinates).
+  - host -> joining V1: `HURT`, `HEAL`, `CAP` (passed straight on to its ULTRAKILL), `KILL <monster net id>`, `TP x y z`.
+  On the host the joining V1's body carries the state: `V1HealthLink.Remote` (the player's connection, set by `ENG`),
+  its own `HealthMirror` (the health/shield/CAP logic, moved out of `V1Drive` into `HealthMirror.cs` so there is one
+  per V1), `LateUpdate` writing the reported HP onto the body and killing it when its ULTRAKILL says dead.
+  `Monsters.Hit` is the one place a hit of V1's becomes RoR2 damage, for the host's own V1 and for `DMG` lines (the
+  sender must be playing V1, the target must be on another team, the multiplier is clamped). What is the player's
+  own game's as before: picture, input, view, stage collision, movement (the body has client authority, so its
+  position and `CharacterDirection.yaw` reach the host through RoR2's own transform sync), interact, equipment, ping.
+  NOT carried over yet, and switched off for a joining V1 so nothing half-works: parrying (projectiles are not listed
+  to ULTRAKILL, melee hits land at once), the Whiplash dragging monsters (every monster counts as heavy: V1 goes to
+  it), blast knockback, coins against hitscan. Untested for a joining V1: stage changes, shields, revives, jump pads,
+  out-of-bounds teleports (the `TP` line), more than one V1 at once, a host who is also V1.
+  `UkLink` now looks for UkBridge only once this game has asked for an ULTRAKILL (`UkLink.Wanted`, set by
+  `UkLauncher.Launch`): two RoR2 on one PC no longer race for the one listener.
+- Two games on one PC (`tools\Run-MpTest.ps1`, scenarios `mphost` / `mpjoin`): the host is started through Steam, the
+  joining game directly from its exe with `SteamAppId` in its environment (Steam starts a game once), both on the
+  bridge profile; `connect localhost:7777` joins a `host 1` game. They keep step through marker files. Both are the
+  same Steam user, and a host rejects a second connection from an account it has (`ServerAuthManager`), so the
+  joining TEST game gives another id (`SecondPlayer` in `TestMode.cs`, patched only in the `mpjoin` scenario). The
+  profile remembers the last survivor: both scenarios set it to Commando first, or a remembered V1 starts an
+  ULTRAKILL in the lobby. A test monster with its AI off still swings: the target's damage is set to 0.
 - V1's weapons and arms are now built in separate try blocks: a failing weapon used to skip the arms, leaving the Whiplash unequipped.
 - Frame transport starts as Ultracraft's AsyncGPUReadback → mmap; D3D11 shared texture only if latency demands it.
 - Gameplay defaults: see "Design defaults chosen" in the design doc.
@@ -329,6 +357,7 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
 
 | Date | Scenario | Result | Numbers |
 |---|---|---|---|
+| 2026-10-13 | mphost + mpjoin: V1 joining a game hosted by a Commando, two games on one PC (golemplains) | PASS (1 run of the final version: host 28/28, joining V1 30/30, 0 real files changed, 0 exceptions); afterwards as regressions: maxhealth 29/29, runloop 45/45, whiplash 27/27 | joined over localhost in 1.4 s; V1 landed on the host's stage (142 colliders), feet 4 mm above the ground; the host saw the figure; V1's revolver x1.25 = 15 on the host's Beetle Guard (480 -> 450), killed in 31 hits, the joining player paid (gold 15 -> 21) and its ULTRAKILL told of the kill; a 30% hit on its body by the host = HURT 30, ULTRAKILL HP 100 -> 70, body 91 of 130; a 10% heal = 70 -> 80; V1 walked 12.9 m and its body went with it on the host; HURT 999 in its ULTRAKILL killed its body on the host, the host's run went on. An earlier run failed because the target's own swings (2 x 52.8) killed V1: which is the path working. Same Steam account on both sides (test-only id on the joining side), same PC: a real second player over the internet was NOT there. Not run: see the Decisions entry |
 | 2026-10-13 | figure, with the limb motion (golemplains) | PASS (2 runs, 36/36, 0 real files changed, 0 exceptions) | standing: swing 0; carried along the ground at 6 m/s: swing 0.88, legs up to 73 degrees apart, leaning into the run in the screenshot; put down: swing 0, no falling pose. The falling pose itself and a real player's movement (dashes, slides, jumps) were not run |
 | 2026-10-12 | figure (golemplains) | PASS (1 run of the final version, 32/32, 0 real files changed, 0 exceptions); items re-run afterwards: PASS 26/26 | a V1 body that is nobody's, looked at as Commando: 36 parts drawn, feet 1 cm above the body's, facing as the body was turned, 0 of the Commando's 3 renderers on. As V1: own figure not shown, 0 renderers on under the model, the body's facing equal to V1's view after a turn. One game only: NOT run with a second player, so that the figure and its facing arrive on a friend's screen is untested; so is the install on a PC without ULTRAKILL |
 | 2026-10-12 | second PC (Windows 11, Intel Arc 130V, RoR2BepInExPack 1.46.0, R2API ContentManagement 1.1.0), built with the SDK ZIP: handshake, picture (golemplains), geometry (snowyforest) | PASS: handshake 16/16, picture 32/32, geometry 29/29, 0 real files changed, 0 exceptions. The first handshake run reported 1 real file changed: the RoR2 profile, replaced by Steam Cloud at launch with a newer one from the other PC (its timestamp was two days before the run; a re-run changed nothing) | picture: 1280x720, 55 fps shown, frame age 28 ms avg / 44 ms p95, input to frame 41 ms, merge 8.4 ms. Siphoned Forest: 355 colliders, 327,073 triangles, 25 meshes straight from Direct3D (first run of D3D11Read on a second graphics card), 1 skipped (SF_FirepitRing), ground 81/81. Not run here: every other scenario. The install from `prebuilt\` was run only on this PC, where the profiles already existed |

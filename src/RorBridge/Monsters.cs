@@ -39,9 +39,16 @@ namespace V1Bridge.Ror
             {
                 var v1 = V1Drive.Body;
                 if (v1 == null || report.victimBody == null || report.attackerBody != v1) return;
-                KillsByV1++;
-                UkLink.Send(Proto.Kill + " " + report.victimBody.GetInstanceID());
+                Killed(report.victimBody);
             };
+        }
+
+        /// <summary>That monster died to this game's V1: ULTRAKILL counts the kill. (For a V1 that joined someone else's
+        /// game the host says so: V1Net.)</summary>
+        public static void Killed(CharacterBody victim)
+        {
+            KillsByV1++;
+            UkLink.Send(Proto.Kill + " " + victim.GetInstanceID());
         }
 
         public static bool V1Wet;
@@ -80,6 +87,8 @@ namespace V1Bridge.Ror
             byId.Clear();
             heights.Clear();
             float unit = UnitDamage(v1);
+            // only the host can move a monster: for a V1 that joined, every monster is one the Whiplash takes V1 to
+            bool host = UnityEngine.Networking.NetworkServer.active;
             var team = v1.teamComponent != null ? v1.teamComponent.teamIndex : TeamIndex.Player;
             foreach (var b in CharacterBody.readOnlyInstancesList)
             {
@@ -98,7 +107,7 @@ namespace V1Bridge.Ror
                 int id = b.GetInstanceID();
                 byId[id] = b;
                 sb.Append(id).Append(',').Append(S(feet.x)).Append(',').Append(S(feet.y)).Append(',').Append(S(feet.z)).Append(',')
-                  .Append(S(w * V1Drive.K)).Append(',').Append(S(h * V1Drive.K)).Append(',').Append(S(b.healthComponent.combinedHealth / unit)).Append(',').Append(Light(b) ? 1 : 0).Append(',').Append(InWater(b.corePosition - Vector3.up * (h * 0.5f), true) ? 1 : 0).Append(';');
+                  .Append(S(w * V1Drive.K)).Append(',').Append(S(h * V1Drive.K)).Append(',').Append(S(b.healthComponent.combinedHealth / unit)).Append(',').Append(Light(b) && host ? 1 : 0).Append(',').Append(InWater(b.corePosition - Vector3.up * (h * 0.5f), true) ? 1 : 0).Append(';');
                 heights[id] = h;
                 if (Segmented(b)) segmentedNow.Add(b);
             }
@@ -251,14 +260,16 @@ namespace V1Bridge.Ror
         public static void OnMessage(string cmd, string rest)
         {
             if (cmd == Proto.Oiled) { SetOiled(rest.Split(' ')); return; }
-            if (cmd == Proto.Knock) { Knocked(rest.Split(' ')); return; }
-            if (cmd == Proto.Pull || cmd == Proto.PullEnd) { Pulled(rest.Split(' '), cmd == Proto.PullEnd); return; }
+            // throwing and dragging a monster are the host's to do: not carried over yet for a V1 that joined
+            bool host = UnityEngine.Networking.NetworkServer.active;
+            if (cmd == Proto.Knock) { if (host) Knocked(rest.Split(' ')); return; }
+            if (cmd == Proto.Pull || cmd == Proto.PullEnd) { if (host) Pulled(rest.Split(' '), cmd == Proto.PullEnd); return; }
             if (cmd != Proto.Damage) return;
             var v1 = V1Drive.Body;
             var a = rest.Split(' ');
             if (v1 == null || a.Length < 8 || !byId.TryGetValue(int.Parse(a[0]), out var victim) || victim == null || victim.healthComponent == null || !victim.healthComponent.alive) return;
             // a punch that meets this monster's own hit is a parry: Parry deals the return
-            if (a[4] == "punch" && Parry.Punched(int.Parse(a[0]), victim, v1))
+            if (host && a[4] == "punch" && Parry.Punched(int.Parse(a[0]), victim, v1))
             {
                 HitsApplied++;
                 LastHit = "parry";
@@ -267,22 +278,35 @@ namespace V1Bridge.Ror
             if (HitLog.Count > 400) HitLog.RemoveRange(0, 200);
             HitLog.Add(a[0] + " " + a[4] + " " + a[1]);
             float mult = F(a[1]);
-            bool explosion = a[3] == "1";
+            bool head = a[2] == "1", explosion = a[3] == "1";
+            LastHitAt = V1Drive.ToRor(new Vector3(F(a[5]), F(a[6]), F(a[7])));
+            LastHitOn = victim;
+            HitsApplied++;
+            if (host) LastHit = Hit(v1, victim, mult, head, explosion, a[4], LastHitAt);
+            else
+            {
+                // V1 joined someone else's game: the hit is the host's to deal
+                V1Net.ClientHit(victim, mult, head, explosion, a[4], LastHitAt);
+                LastHit = "x" + S(mult) + " " + a[4] + (head ? " head" : "") + ": sent to the host";
+            }
+        }
+
+        /// <summary>One hit of V1's on a monster, dealt (on the host) as real Risk of Rain 2 damage from that V1's body.</summary>
+        public static string Hit(CharacterBody v1, CharacterBody victim, float mult, bool head, bool explosion, string hitter, Vector3 at)
+        {
             var info = new DamageInfo
             {
                 attacker = v1.gameObject,
                 inflictor = v1.gameObject,
                 damage = mult * UnitDamage(v1),
                 crit = v1.RollCrit(),
-                position = V1Drive.ToRor(new Vector3(F(a[5]), F(a[6]), F(a[7]))),
+                position = at,
                 force = Vector3.zero,
                 // weak hits (a nail, a pellet) proc less, like RoR2's own rapid weapons
                 procCoefficient = Mathf.Clamp(mult, 0.1f, 1f),
                 damageColorIndex = DamageColorIndex.Default,
                 damageType = explosion ? DamageType.AOE : DamageType.Generic
             };
-            LastHitAt = info.position;
-            LastHitOn = victim;
             float before = victim.healthComponent.combinedHealth;
             victim.healthComponent.TakeDamage(info);
             if (!info.rejected && GlobalEventManager.instance != null)
@@ -290,11 +314,9 @@ namespace V1Bridge.Ror
                 GlobalEventManager.instance.OnHitEnemy(info, victim.gameObject);
                 GlobalEventManager.instance.OnHitAll(info, victim.gameObject);
             }
-            HitsApplied++;
-            LastHit = "x" + S(mult) + " " + a[4] + (a[2] == "1" ? " head" : "") + (info.crit ? " crit" : "") + ": " + S(info.damage) + " sent, " + S(before - Mathf.Max(0f, victim.healthComponent.combinedHealth)) + " taken";
+            return "x" + S(mult) + " " + hitter + (head ? " head" : "") + (info.crit ? " crit" : "") + ": " + S(info.damage) + " sent, " + S(before - Mathf.Max(0f, victim.healthComponent.combinedHealth)) + " taken";
         }
     }
-
     /// <summary>On V1's body: what RoR2's damage does to its health is ULTRAKILL's to decide. A hit can never kill on
     /// RoR2's side; the health it took is handed to ULTRAKILL and put back, and ULTRAKILL's answer (its HP) is what the
     /// body's health then shows. It must be on the prefab: the health component finds its receivers when it wakes.</summary>
@@ -306,10 +328,61 @@ namespace V1Bridge.Ror
         public static int HurtsSent;
         public static float LastHurt;
 
+        // ---- a V1 whose player joined this game (this game is the host): its ULTRAKILL is on the player's PC, and
+        // tells the host its HP; the host tells it what Risk of Rain 2 did to it (V1Net)
+        /// <summary>The joining player this body's V1 belongs to, while their bridge has hold of it. Null: nobody's, or the host's own.</summary>
+        public UnityEngine.Networking.NetworkConnection Remote { get; private set; }
+        public int RemoteHp { get; private set; } = 100;
+        public bool RemoteDead { get; private set; }
+        bool remoteDying;
+        readonly HealthMirror remoteMirror = new HealthMirror();
+        /// <summary>Health components of the V1s joining players are driving, for the patches that have only that to go by.</summary>
+        public static readonly Dictionary<HealthComponent, V1HealthLink> Remotes = new Dictionary<HealthComponent, V1HealthLink>();
+
         void Awake() => hc = GetComponent<HealthComponent>();
 
-        bool Linked => V1Drive.Linked(hc) && !V1Drive.Dying;
+        void OnDestroy()
+        {
+            if (hc != null) Remotes.Remove(hc);
+        }
 
+        /// <summary>The joining player's bridge took hold of this body (or let go: null).</summary>
+        public void SetRemote(UnityEngine.Networking.NetworkConnection conn)
+        {
+            Remote = conn;
+            if (hc == null) return;
+            if (conn != null)
+            {
+                Remotes[hc] = this;
+                remoteMirror.Reset();
+                RemoteDead = false;
+            }
+            else Remotes.Remove(hc);
+        }
+
+        public void SetRemoteHp(int hp, bool dead)
+        {
+            RemoteHp = hp;
+            RemoteDead = dead;
+        }
+
+        /// <summary>The host, every frame: the joining V1's HP is this body's health, and its death this body's.</summary>
+        void LateUpdate()
+        {
+            if (Remote == null || hc == null || !hc.alive || !UnityEngine.Networking.NetworkServer.active) return;
+            if (!Remote.isConnected) { SetRemote(null); return; }
+            if (RemoteDead)
+            {
+                Plugin.Log.LogInfo("a joining V1 died in its ULTRAKILL: its body dies here");
+                remoteDying = true;
+                try { hc.Suicide(); }
+                finally { remoteDying = false; }
+                return;
+            }
+            remoteMirror.Apply(hc, RemoteHp, line => V1Net.ToClient(Remote, line));
+        }
+
+        bool Linked => (V1Drive.Linked(hc) && !V1Drive.Dying) || (Remote != null && !remoteDying);
         public void OnIncomingDamageServer(DamageInfo info)
         {
             if (!Linked) return;
@@ -334,11 +407,17 @@ namespace V1Bridge.Ror
             hc.Networkhealth = before;
             hc.Networkshield = shieldBefore;
             LastHurt = lost / Pool(hc) * 100f * Plugin.IncomingDamage.Value;
+            if (Remote != null)
+            {
+                // a joining player's V1: their ULTRAKILL decides (no parry window yet: the hit lands at once)
+                HurtsSent++;
+                V1Net.ToClient(Remote, Proto.Hurt + " " + LastHurt.ToString("0.##", CultureInfo.InvariantCulture));
+                return;
+            }
             // a monster's swing waits a moment for V1's fist; everything else lands at once
             if (incoming != null && Parry.Hold(incoming, hc.body, LastHurt)) return;
             Send(LastHurt);
         }
-
         /// <summary>What ULTRAKILL's 100 HP stands for on the body: its health and its shield together. A shield of
         /// RoR2's own would soak hits up out of ULTRAKILL's sight (nothing of it shows in ULTRAKILL's HUD) and fill
         /// itself again; with Transcendence, which turns all health into shield, V1 would take nothing at all until the
@@ -362,13 +441,16 @@ namespace V1Bridge.Ror
 
         static void Postfix(HealthComponent __instance, float __result)
         {
-            if (__result <= 0f || Muted || !V1Drive.Linked(__instance)) return;
+            if (__result <= 0f || Muted) return;
+            V1HealthLink remote = null;
+            if (!V1Drive.Linked(__instance) && (V1HealthLink.Remotes.Count == 0 || !V1HealthLink.Remotes.TryGetValue(__instance, out remote))) return;
             float x = __result / V1HealthLink.Pool(__instance) * 100f;
             Sent += x;
-            UkLink.Send(Proto.Heal + " " + x.ToString("0.###", CultureInfo.InvariantCulture));
+            string line = Proto.Heal + " " + x.ToString("0.###", CultureInfo.InvariantCulture);
+            if (remote != null) V1Net.ToClient(remote.Remote, line);
+            else UkLink.Send(line);
         }
     }
-
     /// <summary>Risk of Rain 2 tops a body up by whatever its maximum health grew (a level, an item, a curse lifted). For
     /// V1 the body's health is only a picture of ULTRAKILL's HP: a bigger maximum is not healing, and is not forwarded.</summary>
     [HarmonyPatch(typeof(CharacterBody), nameof(CharacterBody.RecalculateStats))]
@@ -377,7 +459,8 @@ namespace V1Bridge.Ror
         static void Prefix(CharacterBody __instance, out bool __state)
         {
             __state = HealsReachV1.Muted;
-            if (V1Drive.Linked(__instance.healthComponent)) HealsReachV1.Muted = true;
+            var hc = __instance.healthComponent;
+            if (V1Drive.Linked(hc) || (V1HealthLink.Remotes.Count > 0 && hc != null && V1HealthLink.Remotes.ContainsKey(hc))) HealsReachV1.Muted = true;
         }
 
         static void Finalizer(bool __state)

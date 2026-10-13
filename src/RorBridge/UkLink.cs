@@ -17,6 +17,8 @@ namespace V1Bridge.Ror
         static StreamWriter writer;
         static readonly object wlock = new object();
         public static volatile bool Connected;
+        /// <summary>This game has asked for an ULTRAKILL (V1 was picked): from then on it looks for UkBridge.</summary>
+        public static volatile bool Wanted;
         /// <summary>UkBridge's HELLO came back with our protocol number.</summary>
         public static bool Ready { get; private set; }
         /// <summary>key=value pairs from UkBridge's HELLO (unity, pid, guards, scene...), plus "version".</summary>
@@ -35,6 +37,8 @@ namespace V1Bridge.Ror
             {
                 while (true)
                 {
+                    // not before this game wants an ULTRAKILL: another Risk of Rain 2 on this PC may be the one it is for
+                    if (!Wanted) { Thread.Sleep(250); continue; }
                     try
                     {
                         using (var c = new TcpClient())

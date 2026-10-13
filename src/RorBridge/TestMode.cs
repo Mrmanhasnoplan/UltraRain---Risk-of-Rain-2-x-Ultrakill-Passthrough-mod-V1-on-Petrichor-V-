@@ -42,6 +42,8 @@ namespace V1Bridge.Ror
                 exceptions++;
                 if (exceptionList.Count < 6 && !exceptionList.Contains(msg)) exceptionList.Add(msg + " @ " + (stack ?? "").Split('\n')[0].Trim());
             };
+            if (scenario == "mpjoin") SecondPlayer.Apply();
+            V1Net.Trace = scenario.StartsWith("mp");
             Plugin.Log.LogInfo("test mode: scenario '" + scenario + "', output " + outDir);
             StartCoroutine(RunScenario());
         }
@@ -97,6 +99,8 @@ namespace V1Bridge.Ror
                 case "moonorbs": body = MoonOrbs(); break;
                 case "lasthp": body = LastHp(); break;
                 case "figure": body = FigureTest(); break;
+                case "mphost": body = MpHost(); break;
+                case "mpjoin": body = MpJoin(); break;
                 default:
                     Check("known scenario", false, scenario);
                     body = null;
@@ -2434,6 +2438,245 @@ namespace V1Bridge.Ror
             yield return BackToTitle();
         }
 
+        // ------------------------------------------------------------ two games on one PC (tools\Run-MpTest.ps1)
+        // mphost hosts as Commando, mpjoin joins it as V1. They keep step through marker files in a folder both are
+        // given (--v1bridge-mp). Both are the same Steam user; a real second player was not there.
+
+        public const string ArgMp = "--v1bridge-mp";
+        string MpFile(string name) => Path.Combine(Plugin.Arg(ArgMp) ?? outDir, name);
+        void MpMark(string name, string text = "") => File.WriteAllText(MpFile(name), text);
+
+        IEnumerator MpWait(string name, float seconds, string what)
+        {
+            float t = Now;
+            while (!File.Exists(MpFile(name)) && Now - t < seconds) yield return new WaitForSecondsRealtime(0.25f);
+            Check(what, File.Exists(MpFile(name)), "waited " + F(Now - t) + " s for " + name);
+        }
+
+        /// <summary>The host's side of a V1 that joined: it stands in the host's game as the figure, its shots hurt the
+        /// host's monsters and its kills pay, the host's damage reaches its ULTRAKILL, and its death is its body's.</summary>
+        IEnumerator MpHost()
+        {
+            yield return ToTitle();
+            if (failed) yield break;
+            Check("the messages between a host and a joining V1 are set up", V1Net.Problem == null, V1Net.Problem ?? "");
+            // the profile remembers the survivor last picked, and a remembered V1 would start an ULTRAKILL for the host
+            var hostUser = LocalUserManager.GetFirstLocalUser();
+            if (hostUser != null && hostUser.userProfile != null) hostUser.userProfile.SetSurvivorPreference(SurvivorCatalog.FindSurvivorDef("Commando"));
+            RoR2.Console.instance.SubmitCmd(null, "transition_command \"gamemode ClassicRun; host 1;\"");
+            float t = Now;
+            while ((PreGameController.instance == null || LocalUserManager.GetFirstLocalUser()?.currentNetworkUser == null) && Now - t < 90f) yield return null;
+            if (!Check("hosting, in character select", PreGameController.instance != null && UnityEngine.Networking.NetworkServer.active)) yield break;
+            yield return new WaitForSecondsRealtime(2f);
+            MpMark("host-ready");
+            t = Now;
+            while (NetworkUser.readOnlyInstancesList.Count < 2 && Now - t < 300f) yield return new WaitForSecondsRealtime(0.25f);
+            metrics["join_seconds"] = F(Now - t);
+            if (!Check("a second player joined", NetworkUser.readOnlyInstancesList.Count >= 2, NetworkUser.readOnlyInstancesList.Count + " players")) yield break;
+            yield return Pick(SurvivorCatalog.FindSurvivorDef("Commando"));
+            yield return MpWait("join-ready", 300f, "the joining player picked V1 and their ULTRAKILL is ready");
+            if (failed) yield break;
+            NetworkUser guest = null;
+            foreach (var u in NetworkUser.readOnlyInstancesList) if (u != null && !u.isLocalPlayer) guest = u;
+            Check("the host sees the joining player's pick", guest != null && guest.bodyIndexPreference == V1Survivor.BodyIndex, guest != null ? BodyCatalog.GetBodyName(guest.bodyIndexPreference) : "no guest");
+            yield return StartRun();
+            if (failed) yield break;
+            var user = LocalUserManager.GetFirstLocalUser();
+            var me = user.cachedBody;
+            QuietStage(me);
+            CharacterBody v1 = null;
+            t = Now;
+            while (v1 == null && Now - t < 60f)
+            {
+                v1 = guest != null ? guest.GetCurrentBody() : null;
+                yield return null;
+            }
+            if (!Check("the joining player's V1 body is in the host's game", v1 != null && v1.bodyIndex == V1Survivor.BodyIndex && v1 != me)) yield break;
+            var link = v1.GetComponent<V1HealthLink>();
+            yield return MpWait("join-landed", 150f, "the joining V1 landed in its ULTRAKILL");
+            if (failed) yield break;
+            t = Now;
+            while (link.Remote == null && Now - t < 15f) yield return null;
+            Check("the host knows that V1 is run by its player's ULTRAKILL", link.Remote != null);
+            yield return new WaitForSecondsRealtime(2f);
+            var figure = V1Figure.On(v1);
+            Check("the host sees the figure where the joining V1 is", figure != null && figure.activeInHierarchy);
+            Vector3 seenAt = v1.footPosition;
+            metrics["v1_seen_at"] = seenAt.ToString();
+
+            // 1. a monster for it to shoot, 9 m in front of it
+            Vector3 ahead = v1.footPosition + Quaternion.Euler(0f, v1.characterDirection != null ? v1.characterDirection.yaw : 0f, 0f) * Vector3.forward * 9f;
+            if (Physics.Raycast(ahead + Vector3.up * 30f, Vector3.down, out var hit, 100f, LayerIndex.world.mask, QueryTriggerInteraction.Ignore)) ahead = hit.point;
+            var master = new MasterSummon { masterPrefab = MasterCatalog.FindMasterPrefab("BeetleGuardMaster"), position = ahead + Vector3.up * 0.5f, rotation = Quaternion.identity, teamIndexOverride = TeamIndex.Monster, ignoreTeamMemberLimit = true }.Perform();
+            var guard = master != null ? master.GetBody() : null;
+            if (!Check("spawned a Beetle Guard in front of the joining V1", guard != null)) yield break;
+            testMasters.Add(master);
+            foreach (var ai in master.GetComponents<RoR2.CharacterAI.BaseAI>()) ai.enabled = false;
+            guard.baseMoveSpeed = 0f;
+            guard.baseAcceleration = 0f;
+            // with its AI off it still swings at what stands in front of it: its swings do nothing
+            guard.baseDamage = 0f;
+            guard.levelDamage = 0f;
+            guard.MarkAllStatsDirty();
+            var rewards = guard.GetComponent<DeathRewards>();
+            if (rewards != null) { rewards.goldReward = 12; rewards.expReward = 20; }
+            yield return new WaitForSecondsRealtime(2f);
+            float guardHp0 = guard.healthComponent.combinedHealth;
+            int hits0 = V1Net.HostHits;
+            uint gold0 = guest.master != null ? guest.master.money : 0;
+            MpMark("target-up");
+            t = Now;
+            while (V1Net.HostHits == hits0 && Now - t < 60f) yield return null;
+            yield return new WaitForSecondsRealtime(0.5f);
+            metrics["first_hit_from_the_joining_v1"] = V1Net.LastHostHit + "; the Beetle Guard " + F(guardHp0) + " -> " + F(guard != null ? guard.healthComponent.combinedHealth : 0f);
+            Check("the joining V1's shot hurt the monster in the host's game", V1Net.HostHits > hits0 && (guard == null || guard.healthComponent.combinedHealth < guardHp0), metrics["first_hit_from_the_joining_v1"]);
+            // until it is dead: the kill is the joining player's
+            t = Now;
+            while (guard != null && guard.healthComponent.alive && Now - t < 90f) yield return null;
+            yield return new WaitForSecondsRealtime(1f);
+            metrics["kill"] = (V1Net.HostHits - hits0) + " hits; the joining player's gold " + gold0 + " -> " + (guest.master != null ? guest.master.money : 0);
+            Check("the joining V1 killed it, and was paid for it", (guard == null || !guard.healthComponent.alive) && guest.master != null && guest.master.money > gold0, metrics["kill"]);
+            MpMark("target-dead");
+
+            // 2. Risk of Rain 2's damage on it is its ULTRAKILL's to take
+            yield return new WaitForSecondsRealtime(2.5f);
+            int hp0 = link.RemoteHp, hurts0 = V1HealthLink.HurtsSent;
+            v1.healthComponent.TakeDamage(new DamageInfo { damage = v1.healthComponent.fullHealth * 0.3f, position = v1.corePosition });
+            t = Now;
+            while (link.RemoteHp == hp0 && Now - t < 5f) yield return null;
+            yield return new WaitForSecondsRealtime(0.5f);
+            float share = v1.healthComponent.health / v1.healthComponent.fullHealth * 100f;
+            metrics["hit_on_the_joining_v1"] = "30% of its health: HURT " + F(V1HealthLink.LastHurt) + ", its ULTRAKILL HP " + hp0 + " -> " + link.RemoteHp + ", its body " + F(v1.healthComponent.health) + " of " + F(v1.healthComponent.fullHealth);
+            Check("a hit on the joining V1 went to its ULTRAKILL, and cost it its share", V1HealthLink.HurtsSent > hurts0 && Mathf.Abs(hp0 - link.RemoteHp - 30) <= 3, metrics["hit_on_the_joining_v1"]);
+            Check("its body in the host's game shows its ULTRAKILL HP", Mathf.Abs(share - link.RemoteHp) < 3f && v1.healthComponent.alive, metrics["hit_on_the_joining_v1"]);
+            // and healing
+            hp0 = link.RemoteHp;
+            v1.healthComponent.Heal(v1.healthComponent.fullHealth * 0.1f, default, true);
+            t = Now;
+            while (link.RemoteHp == hp0 && Now - t < 5f) yield return null;
+            metrics["heal_on_the_joining_v1"] = "10% of its health: its ULTRAKILL HP " + hp0 + " -> " + link.RemoteHp;
+            Check("Risk of Rain 2's healing reached the joining V1", Mathf.Abs(link.RemoteHp - hp0 - 10) <= 2, metrics["heal_on_the_joining_v1"]);
+            yield return SnapRor("ror2-host-sees-v1");
+            MpMark("host-hit-done");
+
+            // 3. it moves: its body in the host's game goes with it
+            yield return MpWait("join-walked", 30f, "the joining V1 walked");
+            yield return new WaitForSecondsRealtime(1f);
+            float moved = v1 != null ? Vector3.Distance(v1.footPosition, seenAt) : 0f;
+            metrics["v1_moved_m"] = F(moved);
+            Check("its body in the host's game went with it", moved > 3f, F(moved) + " m");
+
+            // 4. its death in ULTRAKILL is its body's death here
+            MpMark("host-ready-for-death");
+            t = Now;
+            while (v1 != null && v1.healthComponent.alive && Now - t < 30f) yield return null;
+            Check("the joining V1's death in its ULTRAKILL killed its body in the host's game", v1 == null || !v1.healthComponent.alive, "after " + F(Now - t) + " s");
+            Check("the host is still in the run", Run.instance != null && me != null && me.healthComponent.alive);
+            metrics["messages"] = V1Net.SentToJoined + " lines to the joining V1, " + V1Net.HostHits + " hits from it";
+            yield return new WaitForSecondsRealtime(2f);
+            MpMark("host-done");
+            yield return new WaitForSecondsRealtime(4f);
+        }
+
+        /// <summary>The joining side: V1 in a game someone else hosts.</summary>
+        IEnumerator MpJoin()
+        {
+            V1Drive.Script = () => default;
+            yield return ToTitle();
+            if (failed) yield break;
+            yield return MpWait("host-ready", 400f, "the host is up");
+            if (failed) yield break;
+            Check("this game goes in as a second player (tests only)", SecondPlayer.Problem == null, SecondPlayer.Problem ?? "");
+            var joinUser = LocalUserManager.GetFirstLocalUser();
+            if (joinUser != null && joinUser.userProfile != null) joinUser.userProfile.SetSurvivorPreference(SurvivorCatalog.FindSurvivorDef("Commando"));
+            yield return new WaitForSecondsRealtime(3f);
+            RoR2.Console.instance.SubmitCmd(null, "connect localhost:7777");
+            float t = Now;
+            while ((PreGameController.instance == null || LocalUserManager.GetFirstLocalUser()?.currentNetworkUser == null) && Now - t < 120f) yield return null;
+            metrics["connect_seconds"] = F(Now - t);
+            if (!Check("joined the host's character select", PreGameController.instance != null && LocalUserManager.GetFirstLocalUser()?.currentNetworkUser != null && !UnityEngine.Networking.NetworkServer.active, "scene " + SceneManager.GetActiveScene().name + ", hosting " + UnityEngine.Networking.NetworkServer.active)) yield break;
+            yield return new WaitForSecondsRealtime(2f);
+            yield return Pick(V1Survivor.Def);
+            t = Now;
+            while (!V1Drive.UkReady && UkLink.Problem == null && UkLauncher.Problem == null && Now - t < 150f) yield return null;
+            if (!Check("ULTRAKILL reached the Sandbox and stripped it", V1Drive.UkReady, V1Drive.UkReady ? "" : UkLink.Problem ?? UkLauncher.Problem ?? "last seen in " + V1Drive.UkLoading)) yield break;
+            MpMark("join-ready");
+            var user = LocalUserManager.GetFirstLocalUser();
+            t = Now;
+            while ((Run.instance == null || user.cachedBody == null) && Now - t < 300f) yield return null;
+            if (!Check("the host started the run and this player has a body", Run.instance != null && user.cachedBody != null, "scene " + SceneManager.GetActiveScene().name)) yield break;
+            var v1 = user.cachedBody;
+            Check("the body is V1's, in someone else's game", BodyCatalog.GetBodyName(v1.bodyIndex) == V1Survivor.BodyName && !UnityEngine.Networking.NetworkServer.active);
+            t = Now;
+            while (!V1Drive.UkLanded && Now - t < 40f) yield return null;
+            if (!Check("V1 landed in ULTRAKILL", V1Drive.UkLanded, V1Drive.LandedInfo + "; stage " + (V1Drive.StageLoaded ?? "not loaded"))) yield break;
+            t = Now;
+            while (Frames.Uploaded < 30 && Now - t < 30f) yield return null;
+            Check("ULTRAKILL frames are arriving", Frames.Uploaded >= 30, Frames.Uploaded + " frames");
+            yield return new WaitForSecondsRealtime(3f);
+            Check("V1 is standing on the stage", V1Drive.Latest.grounded, "feet " + V1Drive.ToRor(V1Drive.Latest.feet) + ", stage " + V1Drive.Stage.objects + " colliders");
+            yield return StandingCheck("in the host's game");
+            MpMark("join-landed");
+
+            // 1. the monster the host put in front of V1
+            yield return MpWait("target-up", 120f, "the host put a monster in front of V1");
+            if (failed) yield break;
+            CharacterBody guard = null;
+            t = Now;
+            while (guard == null && Now - t < 10f)
+            {
+                foreach (var b in CharacterBody.readOnlyInstancesList) if (b != null && b != v1 && b.teamComponent != null && b.teamComponent.teamIndex == TeamIndex.Monster && b.healthComponent != null && b.healthComponent.alive) guard = b;
+                yield return null;
+            }
+            if (!Check("the joining game has the monster too", guard != null && Monsters.Listed >= 1, Monsters.Listed + " listed to ULTRAKILL")) yield break;
+            float guardHp0 = guard.healthComponent.combinedHealth;
+            int shots = 0, hitsSent0 = Monsters.HitsApplied;
+            while (guard != null && guard.healthComponent.alive && shots < 40 && !File.Exists(MpFile("target-dead")))
+            {
+                yield return AimAt(() => guard != null ? guard.corePosition : Vector3.zero);
+                if (guard == null || !guard.healthComponent.alive) break;
+                yield return Tap(new V1Drive.Frame { buttons = 1 });
+                shots++;
+                if (shots == 2) metrics["monster_health_seen_by_the_joining_game"] = F(guardHp0) + " -> " + F(guard.healthComponent.combinedHealth) + " after 2 shots";
+                yield return new WaitForSecondsRealtime(0.55f);
+            }
+            metrics["shots"] = shots + " shots, " + (Monsters.HitsApplied - hitsSent0) + " hits sent to the host (" + Monsters.LastHit + ")";
+            Check("V1's shots were sent to the host", Monsters.HitsApplied > hitsSent0, metrics["shots"]);
+            yield return MpWait("target-dead", 30f, "the host saw the monster die to V1");
+            yield return new WaitForSecondsRealtime(1f);
+            metrics["kills_told_by_the_host"] = V1Net.JoinedKills.ToString();
+            Check("the host told V1's ULTRAKILL about the kill", V1Net.JoinedKills >= 1 && Monsters.KillsByV1 >= 1, V1Net.JoinedKills + " told, " + Monsters.KillsByV1 + " passed to ULTRAKILL");
+            yield return SnapRor("ror2-join-after-kill");
+
+            // 2. the host's hit and heal
+            int hpBefore = V1Drive.UkHp;
+            yield return MpWait("host-hit-done", 40f, "the host hit and healed V1");
+            yield return new WaitForSecondsRealtime(0.5f);
+            metrics["hp_after_the_hosts_hit_and_heal"] = hpBefore + " -> " + V1Drive.UkHp;
+            Check("the host's hit and heal reached V1's ULTRAKILL health", V1Drive.UkHp < hpBefore - 10 && V1Drive.UkHp > hpBefore - 30, metrics["hp_after_the_hosts_hit_and_heal"]);
+
+            // 3. a walk
+            Vector3 p0 = V1Drive.ToRor(V1Drive.Latest.feet);
+            yield return Hold(1.5f, new V1Drive.Frame { keys = new[] { KeyCode.S } });
+            yield return new WaitForSecondsRealtime(0.5f);
+            Check("V1 walks in someone else's game", Vector3.Distance(V1Drive.ToRor(V1Drive.Latest.feet), p0) > 3f, F(Vector3.Distance(V1Drive.ToRor(V1Drive.Latest.feet), p0)) + " m");
+            yield return SnapUk("uk");
+            MpMark("join-walked");
+
+            // 4. death
+            yield return MpWait("host-ready-for-death", 30f, "the host is watching for V1's death");
+            yield return WaitVulnerable();
+            UkLink.Send(Proto.Hurt + " 999");
+            t = Now;
+            while (!V1Drive.UkDead && Now - t < 10f) yield return null;
+            Check("V1 died in ULTRAKILL", V1Drive.UkDead);
+            t = Now;
+            while (user.cachedBody != null && user.cachedBody.healthComponent.alive && Now - t < 10f) yield return null;
+            Check("and its body died in the joining game too (the host's doing)", user.cachedBody == null || !user.cachedBody.healthComponent.alive, "after " + F(Now - t) + " s");
+            metrics["messages"] = V1Net.SentToHost + " lines to the host";
+            yield return MpWait("host-done", 30f, "the host finished");
+        }
+
         static string Q(string s)
         {
             var sb = new StringBuilder("\"");
@@ -2463,6 +2706,39 @@ namespace V1Bridge.Ror
             sb.Append("\n  }\n}\n");
             File.WriteAllText(Path.Combine(outDir, "results.json"), sb.ToString());
             Plugin.Log.LogInfo("[test] " + (failed ? "FAILED" : "passed") + ", results in " + outDir);
+        }
+    }
+    /// <summary>Tests only (the mpjoin scenario): two games on one PC are the same Steam user, and a host turns away a
+    /// second connection from an account it already has. The joining test game says it is somebody else. Never
+    /// applied in normal play.</summary>
+    static class SecondPlayer
+    {
+        static readonly RoR2.PlatformID id = (RoR2.PlatformID)Activator.CreateInstance(typeof(RoR2.PlatformID), 76561190000000001UL);
+        public static string Problem;
+
+        public static void Apply()
+        {
+            try
+            {
+                var h = new HarmonyLib.Harmony("dev.v1bridge.ror.test");
+                var t = typeof(RoR2.Networking.NetworkManagerSystemSteam);
+                h.Patch(HarmonyLib.AccessTools.Method(t, "PlatformAuth"), postfix: new HarmonyLib.HarmonyMethod(typeof(SecondPlayer), nameof(Auth)));
+                h.Patch(HarmonyLib.AccessTools.Method(t, "CreateClientAddPlayerMessage"), postfix: new HarmonyLib.HarmonyMethod(typeof(SecondPlayer), nameof(Add)));
+            }
+            catch (Exception e) { Problem = e.Message; }
+        }
+
+        static void Auth(ref RoR2.Networking.ClientAuthData authData)
+        {
+            authData.platformId = id;
+            authData.authTicket = new byte[0];
+        }
+
+        static void Add(object __result)
+        {
+            if (__result == null) return;
+            HarmonyLib.Traverse.Create(__result).Field("id").SetValue(id);
+            HarmonyLib.Traverse.Create(__result).Field("steamAuthTicketData").SetValue(new byte[0]);
         }
     }
 }

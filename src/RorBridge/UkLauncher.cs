@@ -34,6 +34,7 @@ namespace V1Bridge.Ror
         public static bool Launch()
         {
             Problem = null;
+            UkLink.Wanted = true;
             if (UkLink.Connected) return true;
             if (Running() != null) return Fail("ULTRAKILL is already running without the bridge: close it first");
             string steam = SteamValue("SteamExe");
