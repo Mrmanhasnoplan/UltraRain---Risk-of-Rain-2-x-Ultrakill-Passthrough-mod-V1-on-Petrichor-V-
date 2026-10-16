@@ -96,6 +96,7 @@ In game: **Settings → Mod Options → RorBridge** (or `profiles\ror2\BepInEx\c
 | IncomingDamage | 1 | Multiplies what RoR2 does to V1. |
 | V1Health | 100 | V1's base health in RoR2 (grows 30% of this per level). V1's real health is ULTRAKILL's 100; a higher number makes each RoR2 hit cost a smaller share of it. |
 | HideRoR2HealthAndSkills | on | Hide RoR2's health bar and skill icons under ULTRAKILL's HUD. |
+| UseRealRoR2Save | off | Play on your real RoR2 profile: V1 runs count for unlocks, the logbook, stats and Steam achievements. Takes effect the next time RoR2 starts; a copy of the real profile is kept in `profiles\ror2\real-save-backups` at each start. ULTRAKILL always stays on its copy. |
 
 ULTRAKILL's own options (field of view, sensitivity, HUD, graphics) are in `profiles\uk\Preferences`.
 

@@ -428,6 +428,14 @@ Not in git: `profiles/`, `downloads/`, `build/`, `backups/`, `test-output/`, `.t
   is authored with the owner's GitHub no-reply address (repo-local git config uses it too). Published to
   github.com/Mrmanhasnoplan/UltraRain---Risk-of-Rain-2-x-Ultrakill-Passthrough-mod-V1-on-Petrichor-V- (branch main).
 
+- Real RoR2 save (2026-10-16, at the owner's request): config `Saves/UseRealRoR2Save` (off by default, in Mod Options,
+  restart required). When on, SaveGuard leaves `RoR2Application.cloudStorage` as Steam's, lets config, Steam cloud writes
+  and Steam achievements through, and first copies every `/UserProfiles` file (read only) to
+  `profiles\ror2\real-save-backups\<time>\` (newest 10 kept). Test mode ignores the setting. ULTRAKILL is unchanged:
+  always its own copy, leaderboards and stats always blocked. Verified once by starting RoR2 to the menu with it on:
+  guards report `real-save,ok(8)`, 3 files backed up; the `handshake` test still passes on the copy.
+  The owner plays from the GitHub download in Downloads\; the setting is on there.
+
 ## Findings
 
 - ULTRAKILL: Unity 2022.3.29f1, Mono, D3D11, new Input System. Saves in `<game>\Saves`, prefs in `<game>\Preferences`.

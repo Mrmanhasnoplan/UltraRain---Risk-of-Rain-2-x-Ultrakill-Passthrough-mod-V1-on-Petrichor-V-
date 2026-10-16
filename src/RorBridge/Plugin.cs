@@ -26,6 +26,7 @@ namespace V1Bridge.Ror
         internal static ConfigEntry<float> MouseScale;
         internal static ConfigEntry<float> IncomingDamage;
         internal static ConfigEntry<bool> HideRorHud;
+        internal static ConfigEntry<bool> UseRealSave;
         internal static ConfigEntry<float> V1Health;
 
         internal static string Arg(string name)
@@ -45,6 +46,7 @@ namespace V1Bridge.Ror
             DamageCoefficient = Config.Bind("Balance", "DamageCoefficient", 1f, "RoR2 damage of one ULTRAKILL damage unit (a revolver shot), as a multiple of V1's damage stat. 1 = 100%.");
             MouseScale = Config.Bind("Controls", "MouseScale", 2f, "Multiplies the mouse movement handed to ULTRAKILL, on top of ULTRAKILL's own sensitivity.");
             IncomingDamage = Config.Bind("Balance", "IncomingDamage", 1f, "Multiplies the damage Risk of Rain 2 does to V1.");
+            UseRealSave = Config.Bind("Saves", "UseRealRoR2Save", false, "Play on your real Risk of Rain 2 profile: runs as V1 count for unlocks, the logbook, stats and Steam achievements, and settings changes are kept. Off: Risk of Rain 2 runs on a copy in this profile and your real save is never written. Takes effect the next time Risk of Rain 2 starts. A copy of the real save is made at each start while it is on. ULTRAKILL always runs on its own copy.");
             HideRorHud = Config.Bind("HUD", "HideRoR2HealthAndSkills", true, "Hide Risk of Rain 2's health bar and skill icons while playing V1 (ULTRAKILL's HUD shows them).");
             V1Health = Config.Bind("Balance", "V1Health", 100f, "V1's base health in Risk of Rain 2, at level 1 (it grows 30% of this per level, as every survivor's does). V1's real health is ULTRAKILL's 100: a bigger number here makes each Risk of Rain 2 hit cost a smaller share of it.");
             UkFps = Config.Bind("Performance", "UltrakillFpsCap", 120, "ULTRAKILL's frame rate cap.");
